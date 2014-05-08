@@ -21,20 +21,20 @@ type Rules struct {
 }
 
 type voteResponse struct {
-	representative *representative.Representative
+	representative representative.Rep
 	score          float64
 	err            error
 }
 
 type AuctionResult struct {
 	Instance  instance.Instance
-	Winner    *representative.Representative
+	Winner    representative.Rep
 	NumRounds int
 	NumVotes  int
 	Duration  time.Duration
 }
 
-func HoldAuctionsFor(instances []instance.Instance, representatives []*representative.Representative, rules Rules) []AuctionResult {
+func HoldAuctionsFor(instances []instance.Instance, representatives []representative.Rep, rules Rules) []AuctionResult {
 	c := make(chan AuctionResult)
 	for _, inst := range instances {
 		go func(inst instance.Instance) {
@@ -51,8 +51,8 @@ func HoldAuctionsFor(instances []instance.Instance, representatives []*represent
 	return results
 }
 
-func Auction(instance instance.Instance, representatives []*representative.Representative, rules Rules) AuctionResult {
-	var auctionWinner *representative.Representative
+func Auction(instance instance.Instance, representatives []representative.Rep, rules Rules) AuctionResult {
+	var auctionWinner representative.Rep
 	numRounds, numVotes := 0, 0
 	t := time.Now()
 	for round := 1; round <= rules.MaxRounds; round++ {
@@ -103,7 +103,7 @@ func Auction(instance instance.Instance, representatives []*representative.Repre
 	}
 }
 
-func vote(instance instance.Instance, representatives []*representative.Representative, skip *representative.Representative) (*representative.Representative, float64, error) {
+func vote(instance instance.Instance, representatives []representative.Rep, skip representative.Rep) (representative.Rep, float64, error) {
 	c := make(chan voteResponse)
 	n := 0
 
@@ -112,7 +112,7 @@ func vote(instance instance.Instance, representatives []*representative.Represen
 			continue
 		}
 		n++
-		go func(rep *representative.Representative) {
+		go func(rep representative.Rep) {
 			score, err := rep.Vote(instance)
 			c <- voteResponse{
 				representative: rep,
@@ -123,7 +123,7 @@ func vote(instance instance.Instance, representatives []*representative.Represen
 	}
 
 	winningScore := 1e9
-	winners := []*representative.Representative{}
+	winners := []representative.Rep{}
 
 	for i := 0; i < n; i++ {
 		vote := <-c
@@ -133,7 +133,7 @@ func vote(instance instance.Instance, representatives []*representative.Represen
 
 		if vote.score < winningScore {
 			winningScore = vote.score
-			winners = []*representative.Representative{vote.representative}
+			winners = []representative.Rep{vote.representative}
 		} else if vote.score == winningScore { // can be less strict here
 			winners = append(winners, vote.representative)
 		}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/onsi/auction/auctioneer"
 	"github.com/onsi/auction/instance"
+	"github.com/onsi/auction/lossyrep"
 	"github.com/onsi/auction/representative"
 	"github.com/onsi/auction/util"
 	. "github.com/onsi/ginkgo"
@@ -24,12 +25,12 @@ const cyanColor = "\x1b[36m"
 const grayColor = "\x1b[90m"
 const lightGrayColor = "\x1b[37m"
 
-func printReport(results []auctioneer.AuctionResult, representatives []*representative.Representative, rules auctioneer.Rules, color bool) {
+func printReport(results []auctioneer.AuctionResult, representatives []representative.Rep, rules auctioneer.Rules, color bool) {
 	roundsDistribution := map[int]int{}
 	auctionedInstances := map[string]bool{}
 	fmt.Println("Stats")
 	fmt.Printf("  %d Auctions to %d Representatives\n", len(results), len(representatives))
-	fmt.Printf("  Latency Range: %s < %s\n", representative.LatencyMin, representative.LatencyMax)
+	fmt.Printf("  Latency Range: %s < %s\n", lossyrep.LatencyMin, lossyrep.LatencyMax)
 	minTime, maxTime, totalTime, meanTime := time.Hour, time.Duration(0), time.Duration(0), time.Duration(0)
 	for _, result := range results {
 		if result.Duration < minTime {
@@ -90,8 +91,8 @@ func printReport(results []auctioneer.AuctionResult, representatives []*represen
 
 	fmt.Println("Distribution")
 	for _, rep := range representatives {
-		repString := fmt.Sprintf("%6s", rep.Guid)
-		if rep.Flaky {
+		repString := fmt.Sprintf("%6s", rep.Guid())
+		if rep.(*lossyrep.LossyRep).Flaky {
 			repString = fmt.Sprintf("%s%6s%s", redColor, repString, defaultStyle)
 		}
 
@@ -113,7 +114,7 @@ func printReport(results []auctioneer.AuctionResult, representatives []*represen
 				instanceString += strings.Repeat(colorLookup[col]+"○"+defaultStyle, originalCounts[col])
 				instanceString += strings.Repeat(colorLookup[col]+"●"+defaultStyle, newCounts[col])
 			}
-			instanceString += strings.Repeat(grayColor+"○"+defaultStyle, rep.TotalResources-len(instances))
+			instanceString += strings.Repeat(grayColor+"○"+defaultStyle, rep.TotalResources()-len(instances))
 		} else {
 			numNew := 0
 			numOriginal := 0
@@ -124,7 +125,7 @@ func printReport(results []auctioneer.AuctionResult, representatives []*represen
 					numOriginal++
 				}
 			}
-			instanceString = fmt.Sprintf("%s%s%s", strings.Repeat(lightGrayColor+"●"+defaultStyle, numOriginal), strings.Repeat(greenColor+"●"+defaultStyle, numNew), strings.Repeat(grayColor+"○"+defaultStyle, rep.TotalResources-numOriginal-numNew))
+			instanceString = fmt.Sprintf("%s%s%s", strings.Repeat(lightGrayColor+"●"+defaultStyle, numOriginal), strings.Repeat(greenColor+"●"+defaultStyle, numNew), strings.Repeat(grayColor+"○"+defaultStyle, rep.TotalResources()-numOriginal-numNew))
 		}
 
 		fmt.Printf("  %s: %s\n", repString, instanceString)
@@ -136,10 +137,10 @@ var _ = Describe("Auction", func() {
 	var rules auctioneer.Rules
 
 	BeforeEach(func() {
-		representative.LatencyMin = 2 * time.Millisecond
-		representative.LatencyMax = 12 * time.Millisecond
-		representative.Timeout = 50 * time.Millisecond
-		representative.Flakiness = 0.5
+		lossyrep.LatencyMin = 2 * time.Millisecond
+		lossyrep.LatencyMax = 12 * time.Millisecond
+		lossyrep.Timeout = 50 * time.Millisecond
+		lossyrep.Flakiness = 0.5
 
 		repResources = 100
 		util.ResetGuids()
@@ -162,9 +163,9 @@ var _ = Describe("Auction", func() {
 				instances = append(instances, instance.New(util.NewGuid("APP"), 1))
 			}
 
-			representatives := []*representative.Representative{}
+			representatives := []representative.Rep{}
 			for i := 0; i < numReps; i++ {
-				representatives = append(representatives, representative.New(repResources, false, nil))
+				representatives = append(representatives, lossyrep.New(repResources, false, nil))
 			}
 
 			results := auctioneer.HoldAuctionsFor(instances, representatives, rules)
@@ -188,7 +189,7 @@ var _ = Describe("Auction", func() {
 				instances = append(instances, instance.New(util.NewGuid("APP"), 1))
 			}
 
-			representatives := []*representative.Representative{}
+			representatives := []representative.Rep{}
 			for _, repoApps := range repDistributions {
 				numExistingApps := repoApps
 				flaky := false
@@ -201,7 +202,7 @@ var _ = Describe("Auction", func() {
 					inst := instance.New(util.NewGuid("APP"), 1)
 					existingInstances[inst.InstanceGuid] = inst
 				}
-				representatives = append(representatives, representative.New(repResources, flaky, existingInstances))
+				representatives = append(representatives, lossyrep.New(repResources, flaky, existingInstances))
 			}
 
 			results := auctioneer.HoldAuctionsFor(instances, representatives, rules)
@@ -233,7 +234,7 @@ var _ = Describe("Auction", func() {
 				}
 			}
 
-			representatives := []*representative.Representative{}
+			representatives := []representative.Rep{}
 			for _, repoApps := range repDistributions {
 				numExistingApps := repoApps
 				flaky := false
@@ -246,7 +247,7 @@ var _ = Describe("Auction", func() {
 					inst := instance.New(util.RandomFrom("green", "red", "yellow", "cyan", "gray"), 1)
 					existingInstances[inst.InstanceGuid] = inst
 				}
-				representatives = append(representatives, representative.New(repResources, flaky, existingInstances))
+				representatives = append(representatives, lossyrep.New(repResources, flaky, existingInstances))
 			}
 
 			results := auctioneer.HoldAuctionsFor(instances, representatives, rules)
@@ -278,7 +279,7 @@ var _ = Describe("Auction", func() {
 				}
 			}
 
-			representatives := []*representative.Representative{}
+			representatives := []representative.Rep{}
 			for _, repoApps := range repDistributions {
 				numExistingApps := repoApps
 				flaky := false
@@ -291,7 +292,7 @@ var _ = Describe("Auction", func() {
 					inst := instance.New(util.RandomFrom("green", "red", "yellow", "cyan", "gray"), 1)
 					existingInstances[inst.InstanceGuid] = inst
 				}
-				representatives = append(representatives, representative.New(repResources, flaky, existingInstances))
+				representatives = append(representatives, lossyrep.New(repResources, flaky, existingInstances))
 			}
 
 			results := auctioneer.HoldAuctionsFor(instances, representatives, rules)
