@@ -33,3 +33,11 @@ func RandomSleep(min time.Duration, max time.Duration, timeout time.Duration) bo
 		return false
 	}
 }
+
+func Flake(fraction float64) bool {
+	return R.Float64() <= fraction
+}
+
+func RandomFrom(things ...string) string {
+	return things[R.Intn(len(things))]
+}

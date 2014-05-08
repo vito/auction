@@ -13,17 +13,21 @@ var LatencyMin time.Duration
 var LatencyMax time.Duration
 var Timeout time.Duration
 
+var Flakiness = 1.0
+
 var InsufficientResources = errors.New("insufficient resources for instance")
 var TimeoutError = errors.New("timedout")
+var FlakyError = errors.New("flakeout")
 
 type Representative struct {
 	Guid           string
 	lock           *sync.Mutex
 	instances      map[string]instance.Instance
 	TotalResources int
+	Flaky          bool
 }
 
-func New(totalResources int, instances map[string]instance.Instance) *Representative {
+func New(totalResources int, flaky bool, instances map[string]instance.Instance) *Representative {
 	if instances == nil {
 		instances = map[string]instance.Instance{}
 	}
@@ -32,6 +36,7 @@ func New(totalResources int, instances map[string]instance.Instance) *Representa
 		lock:           &sync.Mutex{},
 		instances:      instances,
 		TotalResources: totalResources,
+		Flaky:          flaky,
 	}
 }
 
@@ -46,6 +51,12 @@ func (rep *Representative) Instances() []instance.Instance {
 }
 
 func (rep *Representative) Vote(instance instance.Instance) (float64, error) {
+	if rep.Flaky {
+		if util.Flake(Flakiness) {
+			time.Sleep(Timeout)
+			return 0, FlakyError
+		}
+	}
 	ok := util.RandomSleep(LatencyMin, LatencyMax, Timeout)
 	if !ok {
 		return 0, TimeoutError
@@ -59,6 +70,12 @@ func (rep *Representative) Vote(instance instance.Instance) (float64, error) {
 }
 
 func (rep *Representative) ReserveAndRecastVote(instance instance.Instance) (float64, error) {
+	if rep.Flaky {
+		if util.Flake(Flakiness) {
+			time.Sleep(Timeout)
+			return 0, FlakyError
+		}
+	}
 	ok := util.RandomSleep(LatencyMin, LatencyMax, Timeout)
 	if !ok {
 		return 0, TimeoutError
@@ -78,6 +95,12 @@ func (rep *Representative) ReserveAndRecastVote(instance instance.Instance) (flo
 }
 
 func (rep *Representative) Release(instance instance.Instance) {
+	if rep.Flaky {
+		if util.Flake(Flakiness) {
+			time.Sleep(Timeout)
+			return
+		}
+	}
 	util.RandomSleep(LatencyMin, LatencyMax, Timeout)
 	rep.lock.Lock()
 	defer rep.lock.Unlock()
@@ -91,6 +114,12 @@ func (rep *Representative) Release(instance instance.Instance) {
 }
 
 func (rep *Representative) Claim(instance instance.Instance) {
+	if rep.Flaky {
+		if util.Flake(Flakiness) {
+			time.Sleep(Timeout)
+			return
+		}
+	}
 	util.RandomSleep(LatencyMin, LatencyMax, Timeout)
 	rep.lock.Lock()
 	defer rep.lock.Unlock()
