@@ -5,13 +5,13 @@ import (
 	"sync"
 
 	"github.com/onsi/auction/instance"
-	"github.com/onsi/auction/util"
 )
 
 type Rep interface {
 	Guid() string
 	TotalResources() int
 	Instances() []instance.Instance
+
 	Vote(instance instance.Instance) (float64, error)
 	ReserveAndRecastVote(instance instance.Instance) (float64, error)
 	Release(instance instance.Instance)
@@ -27,12 +27,11 @@ type Representative struct {
 	totalResources int
 }
 
-func New(totalResources int, instances map[string]instance.Instance) *Representative {
+func New(guid string, totalResources int, instances map[string]instance.Instance) *Representative {
 	if instances == nil {
 		instances = map[string]instance.Instance{}
 	}
 	return &Representative{
-		guid:           util.NewGuid("REP"),
 		lock:           &sync.Mutex{},
 		instances:      instances,
 		totalResources: totalResources,

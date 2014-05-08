@@ -24,7 +24,7 @@ type LossyRep struct {
 
 func New(totalResources int, flaky bool, instances map[string]instance.Instance) *LossyRep {
 	return &LossyRep{
-		Rep:   representative.New(totalResources, instances),
+		Rep:   representative.New(util.NewGuid("REP"), totalResources, instances),
 		Flaky: flaky,
 	}
 }
