@@ -35,11 +35,14 @@ type AuctionResult struct {
 }
 
 func HoldAuctionsFor(instances []instance.Instance, representatives []representative.Rep, rules Rules) []AuctionResult {
+	semaphore := make(chan bool, 20)
 	c := make(chan AuctionResult)
 	for _, inst := range instances {
 		go func(inst instance.Instance) {
-			util.RandomSleep(10*time.Millisecond, 50*time.Millisecond, 50*time.Millisecond)
+			semaphore <- true
+			// util.RandomSleep(10*time.Millisecond, 50*time.Millisecond, 50*time.Millisecond)
 			c <- Auction(inst, representatives, rules)
+			<-semaphore
 		}(inst)
 	}
 

@@ -16,7 +16,7 @@ import (
 	"github.com/onsi/auction/util"
 )
 
-var _ = FDescribe("Auctioneering via HTTP", func() {
+var _ = Describe("Auctioneering via HTTP", func() {
 	var repResources int
 	var rules auctioneer.Rules
 
@@ -71,7 +71,7 @@ var _ = FDescribe("Auctioneering via HTTP", func() {
 		var numApps int
 
 		BeforeEach(func() {
-			numApps = 150
+			numApps = 900
 		})
 
 		It("should distribute evenly", func() {

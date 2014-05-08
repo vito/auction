@@ -6,19 +6,19 @@ import (
 	"time"
 
 	"github.com/cloudfoundry/gunk/natsrunner"
+	"github.com/onsi/auction/auctioneer"
+	"github.com/onsi/auction/instance"
+	"github.com/onsi/auction/natsauctioneer"
+	"github.com/onsi/auction/repnatsclient"
+	"github.com/onsi/auction/representative"
+	"github.com/onsi/auction/util"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gbytes"
 	"github.com/onsi/gomega/gexec"
-
-	"github.com/onsi/auction/auctioneer"
-	"github.com/onsi/auction/instance"
-	"github.com/onsi/auction/repnatsclient"
-	"github.com/onsi/auction/representative"
-	"github.com/onsi/auction/util"
 )
 
-var _ = Describe("Auctioneering via NATS", func() {
+var _ = FDescribe("Auctioneering via NATS", func() {
 	var repResources int
 	var rules auctioneer.Rules
 
@@ -37,7 +37,7 @@ var _ = Describe("Auctioneering via NATS", func() {
 		natsRunner = natsrunner.NewNATSRunner(natsPort)
 		natsRunner.Start()
 
-		numServers = 10
+		numServers = 100
 
 		repResources = 100
 		util.ResetGuids()
@@ -83,7 +83,7 @@ var _ = Describe("Auctioneering via NATS", func() {
 		var numApps int
 
 		BeforeEach(func() {
-			numApps = 500
+			numApps = 900
 		})
 
 		It("should distribute evenly", func() {
@@ -97,7 +97,7 @@ var _ = Describe("Auctioneering via NATS", func() {
 				representatives[i] = repnatsclient.New(natsRunner.MessageBus, guid, timeout)
 			}
 
-			results := auctioneer.HoldAuctionsFor(instances, representatives, rules)
+			results := natsauctioneer.HoldAuctionsFor(natsRunner.MessageBus, instances, representatives, rules)
 
 			printReport(results, representatives, rules, false)
 		})

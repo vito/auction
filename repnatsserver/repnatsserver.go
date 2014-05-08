@@ -18,6 +18,17 @@ var resources = flag.Int("resources", 100, "total available resources")
 var guid = flag.String("guid", "", "guid")
 var natsAddr = flag.String("natsAddr", "127.0.0.1:4222", "nats server address")
 
+type VoteMessage struct {
+	Exclude  string
+	Instance instance.Instance
+}
+
+type VoteResponse struct {
+	Guid  string
+	Score float64
+	Error string
+}
+
 func main() {
 	flag.Parse()
 	if *guid == "" {
@@ -38,6 +49,37 @@ func main() {
 	}
 
 	rep := representative.New(*guid, *resources, nil)
+
+	client.Subscribe("auction", func(msg *yagnats.Message) {
+		var voteMsg VoteMessage
+		err := json.Unmarshal(msg.Payload, &voteMsg)
+		if err != nil {
+			panic(err)
+		}
+
+		if voteMsg.Exclude == *guid {
+			return
+		}
+
+		response := VoteResponse{
+			Guid:  *guid,
+			Error: "",
+		}
+
+		defer func() {
+			payload, _ := json.Marshal(response)
+			client.Publish(msg.ReplyTo, payload)
+		}()
+
+		score, err := rep.Vote(voteMsg.Instance)
+		if err != nil {
+			// log.Println(*guid, "failed to vote:", err)
+			response.Error = err.Error()
+			return
+		}
+
+		response.Score = score
+	})
 
 	client.Subscribe(*guid+".guid", func(msg *yagnats.Message) {
 		jguid, _ := json.Marshal(rep.Guid())
@@ -64,13 +106,13 @@ func main() {
 
 		err := json.Unmarshal(msg.Payload, &inst)
 		if err != nil {
-			log.Println("invalid vote request:", err)
+			log.Println(*guid, "invalid vote request:", err)
 			return
 		}
 
 		score, err := rep.Vote(inst)
 		if err != nil {
-			log.Println("failed to vote:", err)
+			log.Println(*guid, "failed to vote:", err)
 			return
 		}
 
@@ -87,13 +129,13 @@ func main() {
 
 		err := json.Unmarshal(msg.Payload, &inst)
 		if err != nil {
-			log.Println("invalid reserve_and_recast_vote request:", err)
+			// log.Println(*guid, "invalid reserve_and_recast_vote request:", err)
 			return
 		}
 
 		score, err := rep.ReserveAndRecastVote(inst)
 		if err != nil {
-			log.Println("failed to reserve_and_recast_vote:", err)
+			// log.Println(*guid, "failed to reserve_and_recast_vote:", err)
 			return
 		}
 
@@ -110,7 +152,7 @@ func main() {
 
 		err := json.Unmarshal(msg.Payload, &inst)
 		if err != nil {
-			log.Println("invalid reserve_and_recast_vote request:", err)
+			log.Println(*guid, "invalid reserve_and_recast_vote request:", err)
 			return
 		}
 
@@ -129,7 +171,7 @@ func main() {
 
 		err := json.Unmarshal(msg.Payload, &inst)
 		if err != nil {
-			log.Println("invalid reserve_and_recast_vote request:", err)
+			log.Println(*guid, "invalid reserve_and_recast_vote request:", err)
 			return
 		}
 

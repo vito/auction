@@ -34,9 +34,9 @@ func (rep *RepClient) Guid() string {
 
 func (rep *RepClient) publishWithTimeout(subject string, req interface{}, resp interface{}) (err error) {
 	replyTo := util.RandomGuid()
-	c := make(chan []byte)
+	c := make(chan []byte, 1)
 
-	sid, err := rep.client.Subscribe(replyTo, func(msg *yagnats.Message) {
+	_, err = rep.client.Subscribe(replyTo, func(msg *yagnats.Message) {
 		c <- msg.Payload
 	})
 	if err != nil {
@@ -66,7 +66,7 @@ func (rep *RepClient) publishWithTimeout(subject string, req interface{}, resp i
 		return nil
 
 	case <-time.After(rep.timeout):
-		rep.client.Unsubscribe(sid)
+		// rep.client.Unsubscribe(sid)
 		return TimeoutError
 	}
 }
