@@ -92,7 +92,8 @@ func printReport(results []auctioneer.AuctionResult, representatives []represent
 	fmt.Println("Distribution")
 	for _, rep := range representatives {
 		repString := fmt.Sprintf("%6s", rep.Guid())
-		if rep.(*lossyrep.LossyRep).Flaky {
+		lossyRep, ok := rep.(*lossyrep.LossyRep)
+		if ok && lossyRep.Flaky {
 			repString = fmt.Sprintf("%s%6s%s", redColor, repString, defaultStyle)
 		}
 

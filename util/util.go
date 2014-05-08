@@ -1,6 +1,7 @@
 package util
 
 import (
+	crand "crypto/rand"
 	"fmt"
 	"math/rand"
 	"time"
@@ -21,6 +22,15 @@ func ResetGuids() {
 func NewGuid(prefix string) string {
 	guidTracker[prefix] = guidTracker[prefix] + 1
 	return fmt.Sprintf("%s-%d", prefix, guidTracker[prefix])
+}
+
+func RandomGuid() string {
+	b := make([]byte, 8)
+	_, err := crand.Read(b)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%x-%x-%x-%x", b[0:2], b[2:4], b[4:6], b[6:8])
 }
 
 func RandomSleep(min time.Duration, max time.Duration, timeout time.Duration) bool {

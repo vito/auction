@@ -27,18 +27,23 @@ func main() {
 	rep := representative.New(*guid, *resources, nil)
 
 	http.HandleFunc("/guid", func(w http.ResponseWriter, r *http.Request) {
+		// log.Println(*guid, "guid")
 		json.NewEncoder(w).Encode(rep.Guid())
 	})
 
 	http.HandleFunc("/total_resources", func(w http.ResponseWriter, r *http.Request) {
+		// log.Println(*guid, "total resources")
 		json.NewEncoder(w).Encode(rep.TotalResources())
 	})
 
 	http.HandleFunc("/instances", func(w http.ResponseWriter, r *http.Request) {
+		// log.Println(*guid, "instances")
 		json.NewEncoder(w).Encode(rep.Instances())
 	})
 
 	http.HandleFunc("/vote", func(w http.ResponseWriter, r *http.Request) {
+		// log.Println(*guid, "vote")
+
 		var inst instance.Instance
 
 		err := json.NewDecoder(r.Body).Decode(&inst)
@@ -57,6 +62,8 @@ func main() {
 	})
 
 	http.HandleFunc("/reserve_and_recast_vote", func(w http.ResponseWriter, r *http.Request) {
+		// log.Println(*guid, "reserve and recast vote")
+
 		var inst instance.Instance
 
 		err := json.NewDecoder(r.Body).Decode(&inst)
@@ -75,6 +82,8 @@ func main() {
 	})
 
 	http.HandleFunc("/release", func(w http.ResponseWriter, r *http.Request) {
+		// log.Println(*guid, "release")
+
 		var inst instance.Instance
 
 		err := json.NewDecoder(r.Body).Decode(&inst)
@@ -89,6 +98,8 @@ func main() {
 	})
 
 	http.HandleFunc("/claim", func(w http.ResponseWriter, r *http.Request) {
+		// log.Println(*guid, "claim")
+
 		var inst instance.Instance
 
 		err := json.NewDecoder(r.Body).Decode(&inst)

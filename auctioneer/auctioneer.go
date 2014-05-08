@@ -104,6 +104,7 @@ func Auction(instance instance.Instance, representatives []representative.Rep, r
 }
 
 func vote(instance instance.Instance, representatives []representative.Rep, skip representative.Rep) (representative.Rep, float64, error) {
+	util.RandomSleep(1*time.Millisecond, 5*time.Millisecond, 50*time.Millisecond)
 	c := make(chan voteResponse)
 	n := 0
 
