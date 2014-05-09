@@ -3,6 +3,7 @@ package auction_test
 import (
 	"flag"
 	"fmt"
+
 	"github.com/cloudfoundry/yagnats"
 	"github.com/onsi/auction/auctioneer"
 	"github.com/onsi/auction/nats/repnatsclient"
@@ -55,13 +56,9 @@ var _ = BeforeSuite(func() {
 		}
 	}
 
-	natsAddrs = natsAddrs{
+	natsAddrs = []string{
 		"127.0.0.1:20011",
-		"127.0.0.1:20012",
-		"127.0.0.1:20013",
 		"127.0.0.1:20021",
-		"127.0.0.1:20022",
-		"127.0.0.1:20023",
 	}
 
 	numReps = len(guids)
