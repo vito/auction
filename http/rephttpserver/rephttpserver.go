@@ -1,8 +1,7 @@
-package main
+package rephttpserver
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"net/http"
 
@@ -10,40 +9,32 @@ import (
 	"github.com/onsi/auction/representative"
 )
 
-var listenAddr = flag.String("listenAddr", "", "host:port")
-var resources = flag.Int("resources", 100, "total available resources")
-var guid = flag.String("guid", "", "guid")
-
-func main() {
-	flag.Parse()
-	if *guid == "" {
-		panic("can haz guid")
-	}
-
-	if *listenAddr == "" {
-		panic("can haz listen addr")
-	}
-
-	rep := representative.New(*guid, *resources, nil)
-
-	http.HandleFunc("/guid", func(w http.ResponseWriter, r *http.Request) {
-		// log.Println(*guid, "guid")
-		json.NewEncoder(w).Encode(rep.Guid())
-	})
-
+func Start(httpAddr string, rep *representative.Representative) {
 	http.HandleFunc("/total_resources", func(w http.ResponseWriter, r *http.Request) {
-		// log.Println(*guid, "total resources")
 		json.NewEncoder(w).Encode(rep.TotalResources())
 	})
 
 	http.HandleFunc("/instances", func(w http.ResponseWriter, r *http.Request) {
-		// log.Println(*guid, "instances")
 		json.NewEncoder(w).Encode(rep.Instances())
 	})
 
-	http.HandleFunc("/vote", func(w http.ResponseWriter, r *http.Request) {
-		// log.Println(*guid, "vote")
+	http.HandleFunc("/reset", func(w http.ResponseWriter, r *http.Request) {
+		rep.Reset()
+	})
 
+	http.HandleFunc("/set_instances", func(w http.ResponseWriter, r *http.Request) {
+		var instances []instance.Instance
+
+		err := json.NewDecoder(r.Body).Decode(&instances)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		rep.SetInstances(instances)
+	})
+
+	http.HandleFunc("/vote", func(w http.ResponseWriter, r *http.Request) {
 		var inst instance.Instance
 
 		err := json.NewDecoder(r.Body).Decode(&inst)
@@ -62,8 +53,6 @@ func main() {
 	})
 
 	http.HandleFunc("/reserve_and_recast_vote", func(w http.ResponseWriter, r *http.Request) {
-		// log.Println(*guid, "reserve and recast vote")
-
 		var inst instance.Instance
 
 		err := json.NewDecoder(r.Body).Decode(&inst)
@@ -82,8 +71,6 @@ func main() {
 	})
 
 	http.HandleFunc("/release", func(w http.ResponseWriter, r *http.Request) {
-		// log.Println(*guid, "release")
-
 		var inst instance.Instance
 
 		err := json.NewDecoder(r.Body).Decode(&inst)
@@ -98,8 +85,6 @@ func main() {
 	})
 
 	http.HandleFunc("/claim", func(w http.ResponseWriter, r *http.Request) {
-		// log.Println(*guid, "claim")
-
 		var inst instance.Instance
 
 		err := json.NewDecoder(r.Body).Decode(&inst)
@@ -113,7 +98,7 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	fmt.Printf("[%s] serving on %s\n", *guid, *listenAddr)
+	fmt.Printf("[%s] serving http on %s\n", rep.Guid(), httpAddr)
 
-	panic(http.ListenAndServe(*listenAddr, nil))
+	panic(http.ListenAndServe(httpAddr, nil))
 }

@@ -50,6 +50,14 @@ func (rep *LossyRep) Instances(guid string) []instance.Instance {
 	return rep.reps[guid].Instances()
 }
 
+func (rep *LossyRep) SetInstances(guid string, instances []instance.Instance) {
+	rep.reps[guid].SetInstances(instances)
+}
+
+func (rep *LossyRep) Reset(guid string) {
+	rep.reps[guid].Reset()
+}
+
 func (rep *LossyRep) vote(guid string, instance instance.Instance, c chan types.VoteResult) {
 	result := types.VoteResult{
 		Rep: guid,

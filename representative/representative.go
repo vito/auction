@@ -16,13 +16,10 @@ type Representative struct {
 	totalResources int
 }
 
-func New(guid string, totalResources int, instances map[string]instance.Instance) *Representative {
-	if instances == nil {
-		instances = map[string]instance.Instance{}
-	}
+func New(guid string, totalResources int) *Representative {
 	return &Representative{
 		lock:           &sync.Mutex{},
-		instances:      instances,
+		instances:      map[string]instance.Instance{},
 		totalResources: totalResources,
 	}
 }
@@ -33,6 +30,23 @@ func (rep *Representative) Guid() string {
 
 func (rep *Representative) TotalResources() int {
 	return rep.totalResources
+}
+
+func (rep *Representative) Reset() {
+	rep.lock.Lock()
+	defer rep.lock.Unlock()
+	rep.instances = map[string]instance.Instance{}
+}
+
+func (rep *Representative) SetInstances(instances []instance.Instance) {
+	rep.lock.Lock()
+	defer rep.lock.Unlock()
+	instancesMap := map[string]instance.Instance{}
+	for _, instance := range instances {
+		instancesMap[instance.InstanceGuid] = instance
+	}
+
+	rep.instances = instancesMap
 }
 
 func (rep *Representative) Instances() []instance.Instance {

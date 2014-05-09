@@ -13,17 +13,18 @@ import (
 
 var AllBiddersFull = errors.New("all the bidders were full")
 
-var MaxBiddingPool = 20
-var MaxConcurrent = 20
-
 var DefaultRules = Rules{
-	MaxRounds:                       100,
-	DurationToSleepIfBiddersAreFull: 50 * time.Millisecond,
+	MaxRounds:        100,
+	MaxBiddingPool:   20,
+	MaxConcurrent:    20,
+	RepickEveryRound: false,
 }
 
 type Rules struct {
-	MaxRounds                       int
-	DurationToSleepIfBiddersAreFull time.Duration
+	MaxRounds        int
+	MaxBiddingPool   int
+	MaxConcurrent    int
+	RepickEveryRound bool
 }
 
 func HoldAuctionsFor(client types.RepPoolClient, instances []instance.Instance, representatives []string, rules Rules) ([]types.AuctionResult, time.Duration) {
@@ -31,12 +32,11 @@ func HoldAuctionsFor(client types.RepPoolClient, instances []instance.Instance, 
 	bar := pb.StartNew(len(instances))
 	bar.ShowBar = true
 	t := time.Now()
-	semaphore := make(chan bool, MaxConcurrent)
+	semaphore := make(chan bool, rules.MaxConcurrent)
 	c := make(chan types.AuctionResult)
 	for _, inst := range instances {
 		go func(inst instance.Instance) {
 			semaphore <- true
-			representatives := randomSubset(representatives, MaxBiddingPool)
 			c <- Auction(client, inst, representatives, rules)
 			<-semaphore
 		}(inst)
@@ -53,17 +53,25 @@ func HoldAuctionsFor(client types.RepPoolClient, instances []instance.Instance, 
 	return results, time.Since(t)
 }
 
-func Auction(client types.RepPoolClient, instance instance.Instance, representatives []string, rules Rules) types.AuctionResult {
+func Auction(client types.RepPoolClient, instance instance.Instance, allRepresentatives []string, rules Rules) types.AuctionResult {
 	var auctionWinner string
+
+	var representatives []string
+
+	if !rules.RepickEveryRound {
+		representatives = randomSubset(allRepresentatives, rules.MaxBiddingPool)
+	}
 
 	numRounds, numVotes := 0, 0
 	t := time.Now()
 	for round := 1; round <= rules.MaxRounds; round++ {
+		if rules.RepickEveryRound {
+			representatives = randomSubset(allRepresentatives, rules.MaxBiddingPool)
+		}
 		numRounds++
 		winner, _, err := vote(client, instance, representatives)
 		numVotes += len(representatives)
 		if err != nil {
-			time.Sleep(rules.DurationToSleepIfBiddersAreFull)
 			continue
 		}
 

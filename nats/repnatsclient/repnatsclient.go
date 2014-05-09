@@ -16,19 +16,19 @@ import (
 var TimeoutError = errors.New("timeout")
 var RequestFailedError = errors.New("request failed")
 
-type RepClient struct {
+type RepNatsClient struct {
 	client  yagnats.NATSClient
 	timeout time.Duration
 }
 
-func New(client yagnats.NATSClient, timeout time.Duration) *RepClient {
-	return &RepClient{
+func New(client yagnats.NATSClient, timeout time.Duration) *RepNatsClient {
+	return &RepNatsClient{
 		client:  client,
 		timeout: timeout,
 	}
 }
 
-func (rep *RepClient) publishWithTimeout(guid string, subject string, req interface{}, resp interface{}) (err error) {
+func (rep *RepNatsClient) publishWithTimeout(guid string, subject string, req interface{}, resp interface{}) (err error) {
 	replyTo := util.RandomGuid()
 	c := make(chan []byte, 1)
 
@@ -67,7 +67,7 @@ func (rep *RepClient) publishWithTimeout(guid string, subject string, req interf
 	}
 }
 
-func (rep *RepClient) TotalResources(guid string) int {
+func (rep *RepNatsClient) TotalResources(guid string) int {
 	var totalResources int
 	err := rep.publishWithTimeout(guid, "total_resources", nil, &totalResources)
 	if err != nil {
@@ -77,7 +77,7 @@ func (rep *RepClient) TotalResources(guid string) int {
 	return totalResources
 }
 
-func (rep *RepClient) Instances(guid string) []instance.Instance {
+func (rep *RepNatsClient) Instances(guid string) []instance.Instance {
 	var instances []instance.Instance
 	err := rep.publishWithTimeout(guid, "instances", nil, &instances)
 	if err != nil {
@@ -87,7 +87,26 @@ func (rep *RepClient) Instances(guid string) []instance.Instance {
 	return instances
 }
 
-func (rep *RepClient) Vote(guids []string, instance instance.Instance) []types.VoteResult {
+func (rep *RepNatsClient) Reset(guid string) {
+	var instances []instance.Instance
+	err := rep.publishWithTimeout(guid, "reset", nil, nil)
+	if err != nil {
+		panic(err)
+	}
+
+	return instances
+}
+
+func (rep *RepNatsClient) SetInstances(guid string, instances []instance.Instance) {
+	err := rep.publishWithTimeout(guid, "set_instances", instances, nil)
+	if err != nil {
+		panic(err)
+	}
+
+	return instances
+}
+
+func (rep *RepNatsClient) Vote(guids []string, instance instance.Instance) []types.VoteResult {
 	replyTo := util.RandomGuid()
 
 	allReceived := new(sync.WaitGroup)
@@ -140,21 +159,21 @@ func (rep *RepClient) Vote(guids []string, instance instance.Instance) []types.V
 	return results
 }
 
-func (rep *RepClient) ReserveAndRecastVote(guid string, instance instance.Instance) (float64, error) {
+func (rep *RepNatsClient) ReserveAndRecastVote(guid string, instance instance.Instance) (float64, error) {
 	var score float64
 	err := rep.publishWithTimeout(guid, "reserve_and_recast_vote", instance, &score)
 
 	return score, err
 }
 
-func (rep *RepClient) Release(guid string, instance instance.Instance) {
+func (rep *RepNatsClient) Release(guid string, instance instance.Instance) {
 	err := rep.publishWithTimeout(guid, "release", instance, nil)
 	if err != nil {
 		log.Println("failed to release:", err)
 	}
 }
 
-func (rep *RepClient) Claim(guid string, instance instance.Instance) {
+func (rep *RepNatsClient) Claim(guid string, instance instance.Instance) {
 	err := rep.publishWithTimeout(guid, "claim", instance, nil)
 	if err != nil {
 		log.Println("failed to claim:", err)

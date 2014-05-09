@@ -8,11 +8,16 @@
 - [X] Naive HTTP (too many open files)
 - [X] Naive NATS topology (pub/sub per rep per vote)
 - [X] Collated NATS topology (one pub/sub per vote across all reps)
-- [] Pull out common client interface
+- [X] Pull out common client interface
 - [] Organize by communication medium
+- [] One rep binary for all communication
+- [] All client methods should return an error
+- [] Refactor tests
+- [] Separate Auctioneer (server) from AuctionDistributer (client)
 - [] Move suites into communication medium and extract formatting into a visualization package
+- [] Text visualization can be written without reference to reps?
 - [] Implement connection limiting (semaphore) in http client and server
-- [] RPC
+- [] RPC ?
 - [] Bosh deploy representatives that support all three protocols
 - [] Run trials on AWS
 - [] Improved visualizations (animations?)

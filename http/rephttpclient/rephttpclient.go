@@ -1,4 +1,4 @@
-package repclient
+package rephttpclient
 
 import (
 	"bytes"
@@ -21,27 +21,27 @@ func init() {
 	}
 }
 
-type RepClient struct {
+type RepHTTPClient struct {
 	endpoints map[string]string
 	client    *http.Client
 }
 
-func New(endpoints map[string]string) *RepClient {
-	return &RepClient{
+func New(endpoints map[string]string) *RepHTTPClient {
+	return &RepHTTPClient{
 		endpoints: endpoints,
 		client:    http.DefaultClient,
 	}
 }
 
-func (rep *RepClient) enter() {
+func (rep *RepHTTPClient) enter() {
 	semaphore <- true
 }
 
-func (rep *RepClient) exit() {
+func (rep *RepHTTPClient) exit() {
 	<-semaphore
 }
 
-func (rep *RepClient) TotalResources(guid string) int {
+func (rep *RepHTTPClient) TotalResources(guid string) int {
 	rep.enter()
 	defer rep.exit()
 
@@ -61,7 +61,7 @@ func (rep *RepClient) TotalResources(guid string) int {
 	return totalResources
 }
 
-func (rep *RepClient) Instances(guid string) []instance.Instance {
+func (rep *RepHTTPClient) Instances(guid string) []instance.Instance {
 	rep.enter()
 	defer rep.exit()
 
@@ -81,7 +81,33 @@ func (rep *RepClient) Instances(guid string) []instance.Instance {
 	return instances
 }
 
-func (rep *RepClient) vote(guid string, instance instance.Instance, c chan types.VoteResult) {
+func (rep *RepHTTPClient) Reset(guid string) {
+	rep.enter()
+	defer rep.exit()
+	rep.client.Get(rep.endpoints[guid] + "/reset")
+}
+
+func (rep *RepHTTPClient) SetInstances(guid string, instances []instance.Instance) {
+	rep.enter()
+	defer rep.exit()
+
+	body := new(bytes.Buffer)
+	err := json.NewEncoder(body).Encode(instances)
+	if err != nil {
+		println(err.Error())
+		return
+	}
+
+	resp, err := rep.client.Post(rep.endpoints[guid]+"/set_instances", "application/json", body)
+	if err != nil {
+		println(err.Error())
+		return
+	}
+
+	resp.Body.Close()
+}
+
+func (rep *RepHTTPClient) vote(guid string, instance instance.Instance, c chan types.VoteResult) {
 	rep.enter()
 	defer rep.exit()
 	result := types.VoteResult{
@@ -123,7 +149,7 @@ func (rep *RepClient) vote(guid string, instance instance.Instance, c chan types
 	return
 }
 
-func (rep *RepClient) Vote(guids []string, instance instance.Instance) []types.VoteResult {
+func (rep *RepHTTPClient) Vote(guids []string, instance instance.Instance) []types.VoteResult {
 	c := make(chan types.VoteResult)
 	for _, guid := range guids {
 		go rep.vote(guid, instance, c)
@@ -137,7 +163,7 @@ func (rep *RepClient) Vote(guids []string, instance instance.Instance) []types.V
 	return results
 }
 
-func (rep *RepClient) ReserveAndRecastVote(guid string, instance instance.Instance) (float64, error) {
+func (rep *RepHTTPClient) ReserveAndRecastVote(guid string, instance instance.Instance) (float64, error) {
 	rep.enter()
 	defer rep.exit()
 
@@ -168,7 +194,7 @@ func (rep *RepClient) ReserveAndRecastVote(guid string, instance instance.Instan
 	return score, nil
 }
 
-func (rep *RepClient) Release(guid string, instance instance.Instance) {
+func (rep *RepHTTPClient) Release(guid string, instance instance.Instance) {
 	rep.enter()
 	defer rep.exit()
 
@@ -187,7 +213,7 @@ func (rep *RepClient) Release(guid string, instance instance.Instance) {
 	resp.Body.Close()
 }
 
-func (rep *RepClient) Claim(guid string, instance instance.Instance) {
+func (rep *RepHTTPClient) Claim(guid string, instance instance.Instance) {
 	rep.enter()
 	defer rep.exit()
 

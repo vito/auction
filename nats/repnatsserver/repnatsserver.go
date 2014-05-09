@@ -1,8 +1,7 @@
-package main
+package repnatsserver
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"log"
 
@@ -15,47 +14,52 @@ import (
 var errorResponse = []byte("error")
 var successResponse = []byte("ok")
 
-var resources = flag.Int("resources", 100, "total available resources")
-var guid = flag.String("guid", "", "guid")
-var natsAddr = flag.String("natsAddr", "127.0.0.1:4222", "nats server address")
-
-func main() {
-	flag.Parse()
-	if *guid == "" {
-		panic("can haz guid")
-	}
-
-	if *natsAddr == "" {
-		panic("can haz nats addr")
-	}
-
+func Start(natsAddr string, rep *representative.Representative) {
 	client := yagnats.NewClient()
 
 	err := client.Connect(&yagnats.ConnectionInfo{
-		Addr: *natsAddr,
+		Addr: natsAddr,
 	})
+
 	if err != nil {
 		log.Fatalln("no nats:", err)
 	}
 
-	rep := representative.New(*guid, *resources, nil)
+	guid := rep.Guid()
 
-	client.Subscribe(*guid+".guid", func(msg *yagnats.Message) {
+	client.Subscribe(guid+".guid", func(msg *yagnats.Message) {
 		jguid, _ := json.Marshal(rep.Guid())
 		client.Publish(msg.ReplyTo, jguid)
 	})
 
-	client.Subscribe(*guid+".total_resources", func(msg *yagnats.Message) {
+	client.Subscribe(guid+".total_resources", func(msg *yagnats.Message) {
 		jresources, _ := json.Marshal(rep.TotalResources())
 		client.Publish(msg.ReplyTo, jresources)
 	})
 
-	client.Subscribe(*guid+".instances", func(msg *yagnats.Message) {
+	client.Subscribe(guid+".reset", func(msg *yagnats.Message) {
+		rep.Reset()
+		client.Publish(msg.ReplyTo, successResponse)
+	})
+
+	client.Subscribe(guid+".set_instances", func(msg *yagnats.Message) {
+		var instances []instance.Instance
+
+		err := json.Unmarshal(msg.Payload, &instances)
+		if err != nil {
+			client.Publish(msg.ReplyTo, errorResponse)
+		}
+
+		rep.SetInstances(instances)
+		client.Publish(msg.ReplyTo, successResponse)
+	})
+
+	client.Subscribe(guid+".instances", func(msg *yagnats.Message) {
 		jinstances, _ := json.Marshal(rep.Instances())
 		client.Publish(msg.ReplyTo, jinstances)
 	})
 
-	client.Subscribe(*guid+".vote", func(msg *yagnats.Message) {
+	client.Subscribe(guid+".vote", func(msg *yagnats.Message) {
 		var inst instance.Instance
 
 		err := json.Unmarshal(msg.Payload, &inst)
@@ -64,7 +68,7 @@ func main() {
 		}
 
 		response := types.VoteResult{
-			Rep: *guid,
+			Rep: guid,
 		}
 
 		defer func() {
@@ -74,7 +78,7 @@ func main() {
 
 		score, err := rep.Vote(inst)
 		if err != nil {
-			// log.Println(*guid, "failed to vote:", err)
+			// log.Println(guid, "failed to vote:", err)
 			response.Error = err.Error()
 			return
 		}
@@ -82,7 +86,7 @@ func main() {
 		response.Score = score
 	})
 
-	client.Subscribe(*guid+".reserve_and_recast_vote", func(msg *yagnats.Message) {
+	client.Subscribe(guid+".reserve_and_recast_vote", func(msg *yagnats.Message) {
 		var inst instance.Instance
 
 		responsePayload := errorResponse
@@ -92,20 +96,20 @@ func main() {
 
 		err := json.Unmarshal(msg.Payload, &inst)
 		if err != nil {
-			// log.Println(*guid, "invalid reserve_and_recast_vote request:", err)
+			// log.Println(guid, "invalid reserve_and_recast_vote request:", err)
 			return
 		}
 
 		score, err := rep.ReserveAndRecastVote(inst)
 		if err != nil {
-			// log.Println(*guid, "failed to reserve_and_recast_vote:", err)
+			// log.Println(guid, "failed to reserve_and_recast_vote:", err)
 			return
 		}
 
 		responsePayload, _ = json.Marshal(score)
 	})
 
-	client.Subscribe(*guid+".release", func(msg *yagnats.Message) {
+	client.Subscribe(guid+".release", func(msg *yagnats.Message) {
 		var inst instance.Instance
 
 		responsePayload := errorResponse
@@ -115,7 +119,7 @@ func main() {
 
 		err := json.Unmarshal(msg.Payload, &inst)
 		if err != nil {
-			log.Println(*guid, "invalid reserve_and_recast_vote request:", err)
+			log.Println(guid, "invalid reserve_and_recast_vote request:", err)
 			return
 		}
 
@@ -124,7 +128,7 @@ func main() {
 		responsePayload = successResponse
 	})
 
-	client.Subscribe(*guid+".claim", func(msg *yagnats.Message) {
+	client.Subscribe(guid+".claim", func(msg *yagnats.Message) {
 		var inst instance.Instance
 
 		responsePayload := errorResponse
@@ -134,7 +138,7 @@ func main() {
 
 		err := json.Unmarshal(msg.Payload, &inst)
 		if err != nil {
-			log.Println(*guid, "invalid reserve_and_recast_vote request:", err)
+			log.Println(guid, "invalid reserve_and_recast_vote request:", err)
 			return
 		}
 
@@ -143,7 +147,7 @@ func main() {
 		responsePayload = successResponse
 	})
 
-	fmt.Printf("[%s] listening\n", *guid)
+	fmt.Printf("[%s] listening for nats\n", guid)
 
 	select {}
 }

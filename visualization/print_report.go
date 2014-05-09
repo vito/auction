@@ -19,22 +19,18 @@ const cyanColor = "\x1b[36m"
 const grayColor = "\x1b[90m"
 const lightGrayColor = "\x1b[37m"
 
-func PrintReport(client types.RepPoolClient, results []types.AuctionResult, representatives []string, duration time.Duration) {
+func PrintReport(client types.TestRepPoolClient, results []types.AuctionResult, representatives []string, duration time.Duration, rules auctioneer.Rules) {
 	roundsDistribution := map[int]int{}
 	auctionedInstances := map[string]bool{}
 
 	///
-	maxRounds := 0
 	fmt.Println("Rounds")
 	for _, result := range results {
 		roundsDistribution[result.NumRounds] += 1
 		auctionedInstances[result.Instance.InstanceGuid] = true
-		if result.NumRounds > maxRounds {
-			maxRounds = result.NumRounds
-		}
 	}
 
-	for i := 1; i <= maxRounds; i++ {
+	for i := 1; i <= rules.MaxRounds; i++ {
 		if roundsDistribution[i] > 0 {
 			fmt.Printf("  %2d: %s\n", i, strings.Repeat("■", roundsDistribution[i]))
 		}
@@ -128,7 +124,7 @@ func PrintReport(client types.RepPoolClient, results []types.AuctionResult, repr
 		expected := len(auctionedInstances)
 		fmt.Printf("  %s!!!!MISSING INSTANCES!!!!  Expected %d, got %d (%.3f %% failure rate)%s", redColor, expected, numNew, float64(expected-numNew)/float64(expected), defaultStyle)
 	}
-	fmt.Printf("  MaxConcurrent: %d, MaxBiddingBool:%d\n", auctioneer.MaxConcurrent, auctioneer.MaxBiddingPool)
+	fmt.Printf("  MaxConcurrent: %d, MaxBiddingBool:%d, RepickEveryRound: %t, MaxRounds: %d\n", rules.MaxConcurrent, rules.MaxBiddingPool, rules.RepickEveryRound, rules.MaxRounds)
 	if _, ok := client.(*lossyrep.LossyRep); ok {
 		fmt.Printf("  Latency Range: %s < %s, Timeout: %s, Flakiness: %.2f\n", lossyrep.LatencyMin, lossyrep.LatencyMax, lossyrep.Timeout, lossyrep.Flakiness)
 	}

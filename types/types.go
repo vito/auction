@@ -21,11 +21,17 @@ type AuctionResult struct {
 }
 
 type RepPoolClient interface {
-	TotalResources(guid string) int
-	Instances(guid string) []instance.Instance
-
 	Vote(guids []string, instance instance.Instance) []VoteResult
 	ReserveAndRecastVote(guid string, instance instance.Instance) (float64, error)
 	Release(guid string, instance instance.Instance)
 	Claim(guid string, instance instance.Instance)
+}
+
+type TestRepPoolClient interface {
+	RepPoolClient
+
+	TotalResources(guid string) int
+	Instances(guid string) []instance.Instance
+	SetInstances(guid string, instances []instance.Instance)
+	Reset(guid string)
 }
