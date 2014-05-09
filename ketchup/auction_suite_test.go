@@ -46,12 +46,22 @@ func TestAuction(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
+	guids = []string{}
 	for _, name := range []string{"rep_z1", "rep_z2"} {
 		for jobIndex := 0; jobIndex < 5; jobIndex++ {
 			for index := 0; index < 10; index++ {
 				guids = append(guids, fmt.Sprintf("%s-%d-%d", name, jobIndex, index))
 			}
 		}
+	}
+
+	natsAddrs = natsAddrs{
+		"127.0.0.1:20011",
+		"127.0.0.1:20012",
+		"127.0.0.1:20013",
+		"127.0.0.1:20021",
+		"127.0.0.1:20022",
+		"127.0.0.1:20023",
 	}
 
 	numReps = len(guids)
