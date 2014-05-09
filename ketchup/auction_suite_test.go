@@ -15,8 +15,8 @@ import (
 	"time"
 )
 
-var guids = []string{}
-var natsAddrs = []string{}
+var guids []string
+var natsAddrs []string
 
 var numReps int
 var repResources int
@@ -46,6 +46,14 @@ func TestAuction(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
+	for _, name := range []string{"rep_z1", "rep_z2"} {
+		for jobIndex := 0; jobIndex < 5; jobIndex++ {
+			for index := 0; index < 10; index++ {
+				guids = append(guids, fmt.Sprintf("%s-%d-%d", name, jobIndex, index))
+			}
+		}
+	}
+
 	numReps = len(guids)
 	repResources = 100
 
