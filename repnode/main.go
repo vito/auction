@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"strings"
 
 	"github.com/onsi/auction/http/rephttpserver"
 	"github.com/onsi/auction/nats/repnatsserver"
@@ -27,7 +28,7 @@ func main() {
 	rep := representative.New(*guid, *resources)
 
 	if *natsAddr != "" {
-		go repnatsserver.Start(*natsAddrs, rep)
+		go repnatsserver.Start(strings.Split(*natsAddrs, ","), rep)
 	}
 
 	if *httpAddr != "" {

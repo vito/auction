@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"strings"
 
 	"github.com/cloudfoundry/yagnats"
 	"github.com/onsi/auction/instance"
@@ -20,7 +19,7 @@ func Start(natsAddrs []string, rep *representative.Representative) {
 
 	clusterInfo := &yagnats.ConnectionCluster{}
 
-	for _, addr := range strings.Split(natsAddrs, ",") {
+	for _, addr := range natsAddrs {
 		clusterInfo.Members = append(clusterInfo.Members, &yagnats.ConnectionInfo{
 			Addr: addr,
 		})
