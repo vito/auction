@@ -22,30 +22,38 @@ import (
 	"time"
 )
 
-var repNodeBinary string
-
-var mode string
-
-var sessionsToTerminate []*gexec.Session
-
-var natsPort int
-var natsRunner *natsrunner.NATSRunner
-
-var rules auctioneer.Rules
-var timeout time.Duration
-
 const InProcess = "inprocess"
 const HTTP = "http"
 const NATS = "nats"
+const RemoteAuction = "remote"
 
-var client types.TestRepPoolClient
-var guids []string
+// knobs
+var communicationMode string
+var auctioneerMode string
 
-var numReps = 50
+var rules types.AuctionRules
+var timeout time.Duration
+
+var numAuctioneers = 100
+var numReps = 100
 var repResources = 100
 
+// plumbing
+var sessionsToTerminate []*gexec.Session
+var natsPort int
+var natsRunner *natsrunner.NATSRunner
+var client types.TestRepPoolClient
+var guids []string
+var communicator types.AuctionCommunicator
+
 func init() {
-	flag.StringVar(&mode, "mode", "inprocess", "one of inprocess, http, nats")
+	flag.StringVar(&communicationMode, "communicationMode", "inprocess", "one of inprocess, http, nats")
+	flag.StringVar(&auctioneerMode, "auctioneerMode", "inprocess", "one of inprocess, remote")
+
+	flag.IntVar(&(auctioneer.DefaultRules.MaxRounds), "maxRounds", auctioneer.DefaultRules.MaxRounds, "the maximum number of rounds per auction")
+	flag.IntVar(&(auctioneer.DefaultRules.MaxBiddingPool), "maxBiddingPool", auctioneer.DefaultRules.MaxBiddingPool, "the maximum number of participants in the pool")
+	flag.IntVar(&(auctioneer.DefaultRules.MaxConcurrent), "maxConcurrent", auctioneer.DefaultRules.MaxConcurrent, "the maximum number of concurrent auctions to run")
+	flag.BoolVar(&(auctioneer.DefaultRules.RepickEveryRound), "repickEveryRound", auctioneer.DefaultRules.RepickEveryRound, "whether to repick every round")
 }
 
 func TestAuction(t *testing.T) {
@@ -54,12 +62,12 @@ func TestAuction(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
-	var err error
+	fmt.Printf("Running in %s communicationMode\n", communicationMode)
+	fmt.Printf("Running in %s auctioneerMode\n", auctioneerMode)
 
-	fmt.Printf("Running in %s mode\n", mode)
-
-	repNodeBinary, err = gexec.Build("github.com/onsi/auction/repnode")
-	Ω(err).ShouldNot(HaveOccurred())
+	if auctioneerMode == RemoteAuction && communicationMode != NATS {
+		panic("to use remote auctioneers, you must communicate via nats")
+	}
 
 	//parse flags to set up rules
 	timeout = 500 * time.Millisecond
@@ -68,13 +76,24 @@ var _ = BeforeSuite(func() {
 	natsRunner = natsrunner.NewNATSRunner(natsPort)
 
 	rules = auctioneer.DefaultRules
-	rules.MaxRounds = 100
-	rules.RepickEveryRound = true
 
 	sessionsToTerminate = []*gexec.Session{}
 
 	natsRunner.Start()
 	client, guids = buildClient(numReps, repResources)
+
+	if auctioneerMode == InProcess {
+		communicator = func(auctionRequest types.AuctionRequest) types.AuctionResult {
+			return auctioneer.Auction(client, auctionRequest)
+		}
+	} else if auctioneerMode == RemoteAuction {
+		startAuctioneers(numAuctioneers)
+		communicator = func(auctionRequest types.AuctionRequest) types.AuctionResult {
+			return auctioneer.RemoteAuction(natsRunner.MessageBus, auctionRequest)
+		}
+	} else {
+		panic("wat?")
+	}
 })
 
 var _ = BeforeEach(func() {
@@ -93,8 +112,29 @@ var _ = AfterSuite(func() {
 	natsRunner.Stop()
 })
 
+func startAuctioneers(numAuctioneers int) {
+	auctioneerNodeBinary, err := gexec.Build("github.com/onsi/auction/auctioneernode")
+	Ω(err).ShouldNot(HaveOccurred())
+
+	for i := 0; i < numAuctioneers; i++ {
+		auctioneerCmd := exec.Command(
+			auctioneerNodeBinary,
+			"-natsAddr", fmt.Sprintf("127.0.0.1:%d", natsPort),
+			"-timeout", fmt.Sprintf("%s", timeout),
+		)
+
+		sess, err := gexec.Start(auctioneerCmd, GinkgoWriter, GinkgoWriter)
+		Ω(err).ShouldNot(HaveOccurred())
+		Eventually(sess).Should(gbytes.Say("auctioneering"))
+		sessionsToTerminate = append(sessionsToTerminate, sess)
+	}
+}
+
 func buildClient(numReps int, repResources int) (types.TestRepPoolClient, []string) {
-	if mode == InProcess {
+	repNodeBinary, err := gexec.Build("github.com/onsi/auction/repnode")
+	Ω(err).ShouldNot(HaveOccurred())
+
+	if communicationMode == InProcess {
 		lossyrep.LatencyMin = 2 * time.Millisecond
 		lossyrep.LatencyMax = 12 * time.Millisecond
 		lossyrep.Timeout = 50 * time.Millisecond
@@ -111,7 +151,7 @@ func buildClient(numReps int, repResources int) (types.TestRepPoolClient, []stri
 
 		client := lossyrep.New(repMap, map[string]bool{})
 		return client, guids
-	} else if mode == NATS {
+	} else if communicationMode == NATS {
 		guids := []string{}
 
 		for i := 0; i < numReps; i++ {
@@ -135,7 +175,7 @@ func buildClient(numReps int, repResources int) (types.TestRepPoolClient, []stri
 		client := repnatsclient.New(natsRunner.MessageBus, timeout)
 
 		return client, guids
-	} else if mode == HTTP {
+	} else if communicationMode == HTTP {
 		startPort := 18000 + (numReps * GinkgoParallelNode())
 		guids := []string{}
 

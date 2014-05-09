@@ -11,9 +11,8 @@ import (
 
 var _ = Ω
 
-var _ = FDescribe("Auction", func() {
+var _ = Describe("Auction", func() {
 	var initialDistributions map[int][]instance.Instance
-
 	var numApps int
 
 	generateUniqueInstances := func(numInstances int) []instance.Instance {
@@ -25,7 +24,7 @@ var _ = FDescribe("Auction", func() {
 	}
 
 	randomColor := func() string {
-		return []string{"green", "red", "cyan", "yellow", "gray"}[util.R.Intn(5)]
+		return []string{"plurple", "red", "cyan", "yellow", "gray"}[util.R.Intn(5)]
 	}
 
 	generateInstancesWithRandomColors := func(numInstances int) []instance.Instance {
@@ -65,13 +64,13 @@ var _ = FDescribe("Auction", func() {
 
 	Context("with empty representatives and single-instance apps", func() {
 		BeforeEach(func() {
-			numApps = 300
+			numApps = 800
 		})
 
 		It("should distribute evenly", func() {
 			instances := generateUniqueInstances(numApps)
 
-			results, duration := auctioneer.HoldAuctionsFor(client, instances, guids, rules)
+			results, duration := auctioneer.HoldAuctionsFor(client, instances, guids, rules, communicator)
 
 			visualization.PrintReport(client, results, guids, duration, rules)
 		})
@@ -80,18 +79,43 @@ var _ = FDescribe("Auction", func() {
 	Context("with non-empty representatives (and single-instance apps)", func() {
 		var numApps int
 		BeforeEach(func() {
-			numApps = 100
-			initialDistributions[0] = generateUniqueInstances(0)
-			initialDistributions[1] = generateUniqueInstances(42)
-			initialDistributions[3] = generateUniqueInstances(17)
+			numApps = 1000
+
+			for i := 0; i < numReps; i++ {
+				initialDistributions[i] = generateUniqueInstances(util.R.Intn(60))
+			}
 		})
 
 		It("should distribute evenly", func() {
 			instances := generateUniqueInstances(numApps)
 
-			results, duration := auctioneer.HoldAuctionsFor(client, instances, guids, rules)
+			results, duration := auctioneer.HoldAuctionsFor(client, instances, guids, rules, communicator)
 
 			visualization.PrintReport(client, results, guids, duration, rules)
+		})
+	})
+
+	Context("something that looks like prod", func() {
+		var numExistingApps int
+		var numReps int
+		var numDemoInstances int
+		BeforeEach(func() {
+			numExistingApps = 1337
+			numReps = 26
+			appsPerRep := numExistingApps / numReps
+			numDemoInstances = 100
+
+			for i := 0; i < numReps; i++ {
+				initialDistributions[i] = generateUniqueInstances(util.R.Intn(appsPerRep))
+			}
+		})
+
+		It("should distribute evenly when watters does a demo", func() {
+			instances := generateInstancesForAppGuid(numDemoInstances, "red")
+
+			results, duration := auctioneer.HoldAuctionsFor(client, instances, guids[:numReps], rules, communicator)
+
+			visualization.PrintReport(client, results, guids[:numReps], duration, rules)
 		})
 	})
 
@@ -101,21 +125,21 @@ var _ = FDescribe("Auction", func() {
 		Context("when starting from a (terrible) initial distribution", func() {
 			BeforeEach(func() {
 				newInstances = map[string]int{
-					"green":  30,
-					"red":    27,
-					"cyan":   10,
-					"yellow": 22,
-					"gray":   8,
+					"red":     570,
+					"plurple": 420,
+					"cyan":    500,
+					"yellow":  720,
+					"gray":    129,
 				}
 
-				initialDistributions[0] = generateInstancesWithRandomColors(100)
-				initialDistributions[1] = generateInstancesWithRandomColors(42)
-				initialDistributions[3] = generateInstancesWithRandomColors(17)
+				for i := 0; i < numReps; i++ {
+					initialDistributions[i] = generateInstancesWithRandomColors(util.R.Intn(60))
+				}
 			})
 
 			It("should distribute evenly", func() {
 				instances := generateNewColorInstances(newInstances)
-				results, duration := auctioneer.HoldAuctionsFor(client, instances, guids, rules)
+				results, duration := auctioneer.HoldAuctionsFor(client, instances, guids, rules, communicator)
 				visualization.PrintReport(client, results, guids, duration, rules)
 			})
 		})
@@ -123,17 +147,19 @@ var _ = FDescribe("Auction", func() {
 		Context("when starting from empty", func() {
 			BeforeEach(func() {
 				newInstances = map[string]int{
-					"green":  100,
-					"red":    75,
-					"cyan":   50,
-					"yellow": 25,
-					"gray":   10,
+					"red":     1000,
+					"plurple": 750,
+					"cyan":    500,
+					"yellow":  250,
+					"gray":    100,
 				}
 			})
 
 			It("should distribute evently", func() {
 				instances := generateNewColorInstances(newInstances)
-				results, duration := auctioneer.HoldAuctionsFor(client, instances, guids, rules)
+				instances = append(instances, generateUniqueInstances(2000)...)
+
+				results, duration := auctioneer.HoldAuctionsFor(client, instances, guids, rules, communicator)
 				visualization.PrintReport(client, results, guids, duration, rules)
 			})
 		})

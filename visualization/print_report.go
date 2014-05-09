@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/onsi/auction/auctioneer"
 	"github.com/onsi/auction/lossyrep"
 	"github.com/onsi/auction/types"
 )
@@ -18,8 +17,9 @@ const yellowColor = "\x1b[33m"
 const cyanColor = "\x1b[36m"
 const grayColor = "\x1b[90m"
 const lightGrayColor = "\x1b[37m"
+const plurpleColor = "\x1b[35m"
 
-func PrintReport(client types.TestRepPoolClient, results []types.AuctionResult, representatives []string, duration time.Duration, rules auctioneer.Rules) {
+func PrintReport(client types.TestRepPoolClient, results []types.AuctionResult, representatives []string, duration time.Duration, rules types.AuctionRules) {
 	roundsDistribution := map[int]int{}
 	auctionedInstances := map[string]bool{}
 
@@ -93,8 +93,8 @@ func PrintReport(client types.TestRepPoolClient, results []types.AuctionResult, 
 		instanceString := ""
 		instances := client.Instances(guid)
 
-		availableColors := []string{"green", "red", "cyan", "yellow", "gray"}
-		colorLookup := map[string]string{"red": redColor, "green": greenColor, "cyan": cyanColor, "yellow": yellowColor, "gray": lightGrayColor}
+		availableColors := []string{"red", "cyan", "yellow", "gray", "plurple", "green"}
+		colorLookup := map[string]string{"red": redColor, "green": greenColor, "cyan": cyanColor, "yellow": yellowColor, "gray": lightGrayColor, "plurple": plurpleColor}
 
 		originalCounts := map[string]int{}
 		newCounts := map[string]int{}

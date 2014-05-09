@@ -1,11 +1,13 @@
 package auctioneer
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/cheggaaa/pb"
+	"github.com/cloudfoundry/yagnats"
 	"github.com/onsi/auction/instance"
 	"github.com/onsi/auction/types"
 	"github.com/onsi/auction/util"
@@ -13,21 +15,14 @@ import (
 
 var AllBiddersFull = errors.New("all the bidders were full")
 
-var DefaultRules = Rules{
+var DefaultRules = types.AuctionRules{
 	MaxRounds:        100,
 	MaxBiddingPool:   20,
 	MaxConcurrent:    20,
-	RepickEveryRound: false,
+	RepickEveryRound: true,
 }
 
-type Rules struct {
-	MaxRounds        int
-	MaxBiddingPool   int
-	MaxConcurrent    int
-	RepickEveryRound bool
-}
-
-func HoldAuctionsFor(client types.RepPoolClient, instances []instance.Instance, representatives []string, rules Rules) ([]types.AuctionResult, time.Duration) {
+func HoldAuctionsFor(client types.RepPoolClient, instances []instance.Instance, representatives []string, rules types.AuctionRules, communicator types.AuctionCommunicator) ([]types.AuctionResult, time.Duration) {
 	fmt.Printf("\nStarting Auctions\n\n")
 	bar := pb.StartNew(len(instances))
 
@@ -37,7 +32,11 @@ func HoldAuctionsFor(client types.RepPoolClient, instances []instance.Instance, 
 	for _, inst := range instances {
 		go func(inst instance.Instance) {
 			semaphore <- true
-			c <- Auction(client, inst, representatives, rules)
+			c <- communicator(types.AuctionRequest{
+				Instance: inst,
+				RepGuids: representatives,
+				Rules:    rules,
+			})
 			<-semaphore
 		}(inst)
 	}
@@ -53,23 +52,50 @@ func HoldAuctionsFor(client types.RepPoolClient, instances []instance.Instance, 
 	return results, time.Since(t)
 }
 
-func Auction(client types.RepPoolClient, instance instance.Instance, allRepresentatives []string, rules Rules) types.AuctionResult {
+func RemoteAuction(client yagnats.NATSClient, auctionRequest types.AuctionRequest) types.AuctionResult {
+	guid := util.RandomGuid()
+	payload, _ := json.Marshal(auctionRequest)
+
+	c := make(chan []byte)
+	client.Subscribe(guid, func(msg *yagnats.Message) {
+		c <- msg.Payload
+	})
+
+	client.PublishWithReplyTo("diego.auction", guid, payload)
+
+	var responsePayload []byte
+	select {
+	case responsePayload = <-c:
+	case <-time.After(time.Minute):
+		return types.AuctionResult{}
+	}
+
+	var auctionResult types.AuctionResult
+	err := json.Unmarshal(responsePayload, &auctionResult)
+	if err != nil {
+		panic(err)
+	}
+
+	return auctionResult
+}
+
+func Auction(client types.RepPoolClient, auctionRequest types.AuctionRequest) types.AuctionResult {
 	var auctionWinner string
 
 	var representatives []string
 
-	if !rules.RepickEveryRound {
-		representatives = randomSubset(allRepresentatives, rules.MaxBiddingPool)
+	if !auctionRequest.Rules.RepickEveryRound {
+		representatives = randomSubset(auctionRequest.RepGuids, auctionRequest.Rules.MaxBiddingPool)
 	}
 
 	numRounds, numVotes := 0, 0
 	t := time.Now()
-	for round := 1; round <= rules.MaxRounds; round++ {
-		if rules.RepickEveryRound {
-			representatives = randomSubset(allRepresentatives, rules.MaxBiddingPool)
+	for round := 1; round <= auctionRequest.Rules.MaxRounds; round++ {
+		if auctionRequest.Rules.RepickEveryRound {
+			representatives = randomSubset(auctionRequest.RepGuids, auctionRequest.Rules.MaxBiddingPool)
 		}
 		numRounds++
-		winner, _, err := vote(client, instance, representatives)
+		winner, _, err := vote(client, auctionRequest.Instance, representatives)
 		numVotes += len(representatives)
 		if err != nil {
 			continue
@@ -77,7 +103,7 @@ func Auction(client types.RepPoolClient, instance instance.Instance, allRepresen
 
 		c := make(chan types.VoteResult)
 		go func() {
-			winnerScore, err := client.ReserveAndRecastVote(winner, instance)
+			winnerScore, err := client.ReserveAndRecastVote(winner, auctionRequest.Instance)
 			result := types.VoteResult{
 				Rep: winner,
 			}
@@ -98,7 +124,7 @@ func Auction(client types.RepPoolClient, instance instance.Instance, allRepresen
 			}
 		}
 
-		_, secondPlaceScore, err := vote(client, instance, secondRoundVoters)
+		_, secondPlaceScore, err := vote(client, auctionRequest.Instance, secondRoundVoters)
 
 		winnerRecast := <-c
 		numVotes += len(representatives)
@@ -108,19 +134,19 @@ func Auction(client types.RepPoolClient, instance instance.Instance, allRepresen
 			continue
 		}
 
-		if err == nil && secondPlaceScore < winnerRecast.Score && round < rules.MaxRounds {
-			client.Release(winner, instance)
+		if err == nil && secondPlaceScore < winnerRecast.Score && round < auctionRequest.Rules.MaxRounds {
+			client.Release(winner, auctionRequest.Instance)
 			continue
 		}
 
-		client.Claim(winner, instance)
+		client.Claim(winner, auctionRequest.Instance)
 		auctionWinner = winner
 		break
 	}
 
 	return types.AuctionResult{
 		Winner:    auctionWinner,
-		Instance:  instance,
+		Instance:  auctionRequest.Instance,
 		NumRounds: numRounds,
 		NumVotes:  numVotes,
 		Duration:  time.Since(t),

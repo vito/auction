@@ -1,8 +1,10 @@
 package repnatsclient
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -107,7 +109,17 @@ func (rep *RepNatsClient) Vote(guids []string, instance instance.Instance) []typ
 	allReceived := new(sync.WaitGroup)
 	responses := make(chan types.VoteResult, len(guids))
 
+	buffer := &bytes.Buffer{}
+	lock := &sync.Mutex{}
 	_, err := rep.client.Subscribe(replyTo, func(msg *yagnats.Message) {
+		defer func() {
+			if r := recover(); r != nil {
+				lock.Lock()
+				fmt.Println(buffer)
+				lock.Unlock()
+				panic(r)
+			}
+		}()
 		defer allReceived.Done()
 		var result types.VoteResult
 		err := json.Unmarshal(msg.Payload, &result)
@@ -115,6 +127,9 @@ func (rep *RepNatsClient) Vote(guids []string, instance instance.Instance) []typ
 			return
 		}
 
+		lock.Lock()
+		fmt.Fprintf(buffer, "REC: %s %s %s\n", replyTo, msg.Subject, result.Rep)
+		lock.Unlock()
 		responses <- result
 	})
 
@@ -124,8 +139,12 @@ func (rep *RepNatsClient) Vote(guids []string, instance instance.Instance) []typ
 
 	payload, _ := json.Marshal(instance)
 
+	allReceived.Add(len(guids))
+
 	for _, guid := range guids {
-		allReceived.Add(1)
+		lock.Lock()
+		fmt.Fprintf(buffer, "REQ: %s %s\n", guid, replyTo)
+		lock.Unlock()
 		rep.client.PublishWithReplyTo(guid+".vote", replyTo, payload)
 	}
 
@@ -138,6 +157,7 @@ func (rep *RepNatsClient) Vote(guids []string, instance instance.Instance) []typ
 	select {
 	case <-done:
 	case <-time.After(rep.timeout):
+		println("TIMING OUT!!")
 	}
 
 	results := []types.VoteResult{}

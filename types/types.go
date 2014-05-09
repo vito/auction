@@ -7,18 +7,33 @@ import (
 )
 
 type VoteResult struct {
-	Rep   string
-	Score float64
-	Error string
+	Rep   string  `json:"r"`
+	Score float64 `json:"s"`
+	Error string  `json:"e"`
+}
+
+type AuctionRequest struct {
+	Instance instance.Instance `json:"i"`
+	RepGuids []string          `json:"rg"`
+	Rules    AuctionRules      `json:"r"`
 }
 
 type AuctionResult struct {
-	Instance  instance.Instance
-	Winner    string
-	NumRounds int
-	NumVotes  int
-	Duration  time.Duration
+	Instance  instance.Instance `json:"i"`
+	Winner    string            `json:"w"`
+	NumRounds int               `json:"nr"`
+	NumVotes  int               `json:"nv"`
+	Duration  time.Duration     `json:"d"`
 }
+
+type AuctionRules struct {
+	MaxRounds        int  `json:"mr"`
+	MaxBiddingPool   int  `json:"mb"`
+	MaxConcurrent    int  `json:"mc"`
+	RepickEveryRound bool `json:"r"`
+}
+
+type AuctionCommunicator func(AuctionRequest) AuctionResult
 
 type RepPoolClient interface {
 	Vote(guids []string, instance instance.Instance) []VoteResult
