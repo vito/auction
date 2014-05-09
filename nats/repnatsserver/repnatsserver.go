@@ -15,14 +15,14 @@ import (
 var errorResponse = []byte("error")
 var successResponse = []byte("ok")
 
-func Start(natsAddr string, rep *representative.Representative) {
+func Start(natsAddrs []string, rep *representative.Representative) {
 	client := yagnats.NewClient()
 
-	clusterInfo := yagnats.ConnectionCluster{}
+	clusterInfo := &yagnats.ConnectionCluster{}
 
-	for _, addr := range strings.Split(*natsAddrs, ",") {
+	for _, addr := range strings.Split(natsAddrs, ",") {
 		clusterInfo.Members = append(clusterInfo.Members, &yagnats.ConnectionInfo{
-			Addr: *natsAddr,
+			Addr: addr,
 		})
 	}
 

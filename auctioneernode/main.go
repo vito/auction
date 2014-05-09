@@ -29,11 +29,11 @@ func main() {
 
 	client := yagnats.NewClient()
 
-	clusterInfo := yagnats.ConnectionCluster{}
+	clusterInfo := &yagnats.ConnectionCluster{}
 
 	for _, addr := range strings.Split(*natsAddrs, ",") {
 		clusterInfo.Members = append(clusterInfo.Members, &yagnats.ConnectionInfo{
-			Addr: *natsAddr,
+			Addr: addr,
 		})
 	}
 
