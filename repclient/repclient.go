@@ -3,49 +3,49 @@ package repclient
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
 	"github.com/onsi/auction/instance"
+	"github.com/onsi/auction/types"
 )
 
+var semaphore chan bool
+var MaxConcurrentConnections = 100
+
 func init() {
+	semaphore = make(chan bool, MaxConcurrentConnections)
 	http.DefaultClient.Transport = &http.Transport{
 		ResponseHeaderTimeout: 100 * time.Millisecond,
 	}
 }
 
 type RepClient struct {
-	endpoint string
-	client   *http.Client
+	endpoints map[string]string
+	client    *http.Client
 }
 
-func New(endpoint string) *RepClient {
+func New(endpoints map[string]string) *RepClient {
 	return &RepClient{
-		endpoint: endpoint,
-		client:   http.DefaultClient,
+		endpoints: endpoints,
+		client:    http.DefaultClient,
 	}
 }
 
-func (rep *RepClient) Guid() string {
-	resp, err := rep.client.Get(rep.endpoint + "/guid")
-	if err != nil {
-		panic("failed to get guid!")
-	}
-
-	defer resp.Body.Close()
-
-	var guid string
-	err = json.NewDecoder(resp.Body).Decode(&guid)
-	if err != nil {
-		panic("invalid guid: " + err.Error())
-	}
-
-	return guid
+func (rep *RepClient) enter() {
+	semaphore <- true
 }
 
-func (rep *RepClient) TotalResources() int {
-	resp, err := rep.client.Get(rep.endpoint + "/total_resources")
+func (rep *RepClient) exit() {
+	<-semaphore
+}
+
+func (rep *RepClient) TotalResources(guid string) int {
+	rep.enter()
+	defer rep.exit()
+
+	resp, err := rep.client.Get(rep.endpoints[guid] + "/total_resources")
 	if err != nil {
 		panic("failed to get total resources!")
 	}
@@ -61,8 +61,11 @@ func (rep *RepClient) TotalResources() int {
 	return totalResources
 }
 
-func (rep *RepClient) Instances() []instance.Instance {
-	resp, err := rep.client.Get(rep.endpoint + "/instances")
+func (rep *RepClient) Instances(guid string) []instance.Instance {
+	rep.enter()
+	defer rep.exit()
+
+	resp, err := rep.client.Get(rep.endpoints[guid] + "/instances")
 	if err != nil {
 		panic("failed to get instances!")
 	}
@@ -78,7 +81,66 @@ func (rep *RepClient) Instances() []instance.Instance {
 	return instances
 }
 
-func (rep *RepClient) Vote(instance instance.Instance) (float64, error) {
+func (rep *RepClient) vote(guid string, instance instance.Instance, c chan types.VoteResult) {
+	rep.enter()
+	defer rep.exit()
+	result := types.VoteResult{
+		Rep: guid,
+	}
+	defer func() {
+		c <- result
+	}()
+
+	body := new(bytes.Buffer)
+	err := json.NewEncoder(body).Encode(instance)
+	if err != nil {
+		result.Error = err.Error()
+		return
+	}
+
+	resp, err := rep.client.Post(rep.endpoints[guid]+"/vote", "application/json", body)
+	if err != nil {
+		println(err.Error())
+		result.Error = err.Error()
+		return
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		result.Error = "failed"
+		return
+	}
+
+	var score float64
+	err = json.NewDecoder(resp.Body).Decode(&score)
+	if err != nil {
+		result.Error = err.Error()
+		return
+	}
+	result.Score = score
+
+	return
+}
+
+func (rep *RepClient) Vote(guids []string, instance instance.Instance) []types.VoteResult {
+	c := make(chan types.VoteResult)
+	for _, guid := range guids {
+		go rep.vote(guid, instance, c)
+	}
+
+	results := []types.VoteResult{}
+	for _ = range guids {
+		results = append(results, <-c)
+	}
+
+	return results
+}
+
+func (rep *RepClient) ReserveAndRecastVote(guid string, instance instance.Instance) (float64, error) {
+	rep.enter()
+	defer rep.exit()
+
 	body := new(bytes.Buffer)
 
 	err := json.NewEncoder(body).Encode(instance)
@@ -86,13 +148,16 @@ func (rep *RepClient) Vote(instance instance.Instance) (float64, error) {
 		return 0, err
 	}
 
-	resp, err := rep.client.Post(rep.endpoint+"/vote", "application/json", body)
+	resp, err := rep.client.Post(rep.endpoints[guid]+"/reserve_and_recast_vote", "application/json", body)
 	if err != nil {
-		// log.Println("voting failed:", err)
 		return 0, err
 	}
 
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, errors.New("failed")
+	}
 
 	var score float64
 	err = json.NewDecoder(resp.Body).Decode(&score)
@@ -103,32 +168,10 @@ func (rep *RepClient) Vote(instance instance.Instance) (float64, error) {
 	return score, nil
 }
 
-func (rep *RepClient) ReserveAndRecastVote(instance instance.Instance) (float64, error) {
-	body := new(bytes.Buffer)
+func (rep *RepClient) Release(guid string, instance instance.Instance) {
+	rep.enter()
+	defer rep.exit()
 
-	err := json.NewEncoder(body).Encode(instance)
-	if err != nil {
-		return 0, err
-	}
-
-	resp, err := rep.client.Post(rep.endpoint+"/reserve_and_recast_vote", "application/json", body)
-	if err != nil {
-		// log.Println("reserving and recasting vote failed:", err)
-		return 0, err
-	}
-
-	defer resp.Body.Close()
-
-	var score float64
-	err = json.NewDecoder(resp.Body).Decode(&score)
-	if err != nil {
-		return 0, err
-	}
-
-	return score, nil
-}
-
-func (rep *RepClient) Release(instance instance.Instance) {
 	body := new(bytes.Buffer)
 
 	err := json.NewEncoder(body).Encode(instance)
@@ -136,16 +179,18 @@ func (rep *RepClient) Release(instance instance.Instance) {
 		panic("failed to encode instance: " + err.Error())
 	}
 
-	resp, err := rep.client.Post(rep.endpoint+"/release", "application/json", body)
+	resp, err := rep.client.Post(rep.endpoints[guid]+"/release", "application/json", body)
 	if err != nil {
-		// log.Println("releasing failed:", err)
 		return
 	}
 
-	defer resp.Body.Close()
+	resp.Body.Close()
 }
 
-func (rep *RepClient) Claim(instance instance.Instance) {
+func (rep *RepClient) Claim(guid string, instance instance.Instance) {
+	rep.enter()
+	defer rep.exit()
+
 	body := new(bytes.Buffer)
 
 	err := json.NewEncoder(body).Encode(instance)
@@ -153,11 +198,10 @@ func (rep *RepClient) Claim(instance instance.Instance) {
 		panic("failed to encode instance: " + err.Error())
 	}
 
-	resp, err := rep.client.Post(rep.endpoint+"/claim", "application/json", body)
+	resp, err := rep.client.Post(rep.endpoints[guid]+"/claim", "application/json", body)
 	if err != nil {
-		// log.Println("claiming failed:", err)
 		return
 	}
 
-	defer resp.Body.Close()
+	resp.Body.Close()
 }

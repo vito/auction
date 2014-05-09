@@ -2,8 +2,10 @@ package auctioneer
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
+	"github.com/cheggaaa/pb"
 	"github.com/onsi/auction/instance"
 	"github.com/onsi/auction/types"
 	"github.com/onsi/auction/util"
@@ -25,21 +27,17 @@ type Rules struct {
 }
 
 func HoldAuctionsFor(client types.RepPoolClient, instances []instance.Instance, representatives []string, rules Rules) ([]types.AuctionResult, time.Duration) {
+	fmt.Printf("\nStarting Auctions\n\n")
+	bar := pb.StartNew(len(instances))
+	bar.ShowBar = true
 	t := time.Now()
 	semaphore := make(chan bool, MaxConcurrent)
 	c := make(chan types.AuctionResult)
 	for _, inst := range instances {
 		go func(inst instance.Instance) {
 			semaphore <- true
-			reps := representatives
-			if len(representatives) > MaxBiddingPool {
-				permutation := util.R.Perm(len(representatives))
-				reps = []string{}
-				for _, index := range permutation[:MaxBiddingPool] {
-					reps = append(reps, representatives[index])
-				}
-			}
-			c <- Auction(client, inst, reps, rules)
+			representatives := randomSubset(representatives, MaxBiddingPool)
+			c <- Auction(client, inst, representatives, rules)
 			<-semaphore
 		}(inst)
 	}
@@ -47,7 +45,10 @@ func HoldAuctionsFor(client types.RepPoolClient, instances []instance.Instance, 
 	results := []types.AuctionResult{}
 	for _ = range instances {
 		results = append(results, <-c)
+		bar.Increment()
 	}
+
+	bar.FinishPrint("\n")
 
 	return results, time.Since(t)
 }
@@ -116,6 +117,19 @@ func Auction(client types.RepPoolClient, instance instance.Instance, representat
 		NumVotes:  numVotes,
 		Duration:  time.Since(t),
 	}
+}
+
+func randomSubset(representatives []string, subsetSize int) []string {
+	reps := representatives
+	if len(reps) > subsetSize {
+		permutation := util.R.Perm(len(representatives))
+		reps = []string{}
+		for _, index := range permutation[:subsetSize] {
+			reps = append(reps, representatives[index])
+		}
+	}
+
+	return reps
 }
 
 func vote(client types.RepPoolClient, instance instance.Instance, representatives []string) (string, float64, error) {
