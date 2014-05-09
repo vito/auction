@@ -16,7 +16,7 @@ import (
 )
 
 var guids = []string{}
-var natsAddr string
+var natsAddrs = []string{}
 
 var numReps int
 var repResources int
@@ -57,9 +57,15 @@ var _ = BeforeSuite(func() {
 	rules = auctioneer.DefaultRules
 
 	natsClient = yagnats.NewClient()
-	err := natsClient.Connect(&yagnats.ConnectionInfo{
-		Addr: natsAddr,
-	})
+	clusterInfo := &yagnats.ConnectionCluster{}
+
+	for _, addr := range natsAddrs {
+		clusterInfo.Members = append(clusterInfo.Members, &yagnats.ConnectionInfo{
+			Addr: addr,
+		})
+	}
+
+	err := natsClient.Connect(clusterInfo)
 	Ω(err).ShouldNot(HaveOccurred())
 
 	client = repnatsclient.New(natsClient, timeout)
