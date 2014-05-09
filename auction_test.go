@@ -9,6 +9,7 @@ import (
 	"github.com/onsi/auction/instance"
 	"github.com/onsi/auction/lossyrep"
 	"github.com/onsi/auction/representative"
+	"github.com/onsi/auction/types"
 	"github.com/onsi/auction/util"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -25,28 +26,13 @@ const cyanColor = "\x1b[36m"
 const grayColor = "\x1b[90m"
 const lightGrayColor = "\x1b[37m"
 
-func printReport(results []auctioneer.AuctionResult, representatives []representative.Rep, rules auctioneer.Rules, color bool) {
+func printReport(client types.RepPoolClient, results []types.AuctionResult, representatives []string, rules auctioneer.Rules, duration time.Duration, color bool) {
 	roundsDistribution := map[int]int{}
 	auctionedInstances := map[string]bool{}
-	fmt.Println("Stats")
-	fmt.Printf("  %d Auctions to %d Representatives\n", len(results), len(representatives))
-	fmt.Printf("  Latency Range: %s < %s\n", lossyrep.LatencyMin, lossyrep.LatencyMax)
-	minTime, maxTime, totalTime, meanTime := time.Hour, time.Duration(0), time.Duration(0), time.Duration(0)
-	for _, result := range results {
-		if result.Duration < minTime {
-			minTime = result.Duration
-		}
-		if result.Duration > maxTime {
-			maxTime = result.Duration
-		}
-		totalTime += result.Duration
-		meanTime += result.Duration
-	}
 
-	meanTime = meanTime / time.Duration(len(results))
-	fmt.Printf("  Min: %s | Max: %s | Total: %s | Mean: %s\n", minTime, maxTime, totalTime, meanTime)
+	///
 
-	fmt.Println("Auctions")
+	fmt.Println("Rounds")
 	for _, result := range results {
 		roundsDistribution[result.NumRounds] += 1
 		auctionedInstances[result.Instance.InstanceGuid] = true
@@ -57,6 +43,8 @@ func printReport(results []auctioneer.AuctionResult, representatives []represent
 			fmt.Printf("  %2d: %s\n", i, strings.Repeat("█", roundsDistribution[i]))
 		}
 	}
+
+	///
 
 	minRounds, maxRounds, totalRounds, meanRounds := 100000000, 0, 0, float64(0)
 	for _, result := range results {
@@ -72,6 +60,8 @@ func printReport(results []auctioneer.AuctionResult, representatives []represent
 
 	meanRounds = meanRounds / float64(len(results))
 	fmt.Printf("  Min: %d | Max: %d | Total: %d | Mean: %.2f\n", minRounds, maxRounds, totalRounds, meanRounds)
+
+	///
 
 	fmt.Println("Votes")
 	minVotes, maxVotes, totalVotes, meanVotes := 100000000, 0, 0, float64(0)
@@ -89,16 +79,18 @@ func printReport(results []auctioneer.AuctionResult, representatives []represent
 	meanVotes = meanVotes / float64(len(results))
 	fmt.Printf("  Min: %d | Max: %d | Total: %d | Mean: %.2f\n", minVotes, maxVotes, totalVotes, meanVotes)
 
+	///
+
 	fmt.Println("Distribution")
-	for _, rep := range representatives {
-		repString := fmt.Sprintf("%6s", rep.Guid())
-		lossyRep, ok := rep.(*lossyrep.LossyRep)
-		if ok && lossyRep.Flaky {
-			repString = fmt.Sprintf("%s%6s%s", redColor, repString, defaultStyle)
+	for _, guid := range representatives {
+		repString := fmt.Sprintf("%10s", guid)
+		lossyRep, ok := client.(*lossyrep.LossyRep)
+		if ok && lossyRep.FlakyReps[guid] {
+			repString = fmt.Sprintf("%s%10s%s", redColor, repString, defaultStyle)
 		}
 
 		instanceString := ""
-		instances := rep.Instances()
+		instances := client.Instances(guid)
 		if color {
 			originalCounts := map[string]int{}
 			newCounts := map[string]int{}
@@ -115,7 +107,7 @@ func printReport(results []auctioneer.AuctionResult, representatives []represent
 				instanceString += strings.Repeat(colorLookup[col]+"○"+defaultStyle, originalCounts[col])
 				instanceString += strings.Repeat(colorLookup[col]+"●"+defaultStyle, newCounts[col])
 			}
-			instanceString += strings.Repeat(grayColor+"○"+defaultStyle, rep.TotalResources()-len(instances))
+			instanceString += strings.Repeat(grayColor+"○"+defaultStyle, client.TotalResources(guid)-len(instances))
 		} else {
 			numNew := 0
 			numOriginal := 0
@@ -126,11 +118,35 @@ func printReport(results []auctioneer.AuctionResult, representatives []represent
 					numOriginal++
 				}
 			}
-			instanceString = fmt.Sprintf("%s%s%s", strings.Repeat(lightGrayColor+"●"+defaultStyle, numOriginal), strings.Repeat(greenColor+"●"+defaultStyle, numNew), strings.Repeat(grayColor+"○"+defaultStyle, rep.TotalResources()-numOriginal-numNew))
+			instanceString = fmt.Sprintf("%s%s%s", strings.Repeat(lightGrayColor+"●"+defaultStyle, numOriginal), strings.Repeat(greenColor+"●"+defaultStyle, numNew), strings.Repeat(grayColor+"○"+defaultStyle, client.TotalResources(guid)-numOriginal-numNew))
 		}
 
 		fmt.Printf("  %s: %s\n", repString, instanceString)
 	}
+
+	fmt.Printf("Finished %d Auctions to %d Representatives in %s\n", len(results), len(representatives), duration)
+	fmt.Printf("  MaxConcurrent: %d, MaxBiddingBool:%d\n", auctioneer.MaxConcurrent, auctioneer.MaxBiddingPool)
+	if _, ok := client.(*lossyrep.LossyRep); ok {
+		fmt.Printf("  Latency Range: %s < %s, Timeout: %s, Flakiness: %.2f\n", lossyrep.LatencyMin, lossyrep.LatencyMax, lossyrep.Timeout, lossyrep.Flakiness)
+	}
+
+	///
+
+	minTime, maxTime, totalTime, meanTime := time.Hour, time.Duration(0), time.Duration(0), time.Duration(0)
+	for _, result := range results {
+		if result.Duration < minTime {
+			minTime = result.Duration
+		}
+		if result.Duration > maxTime {
+			maxTime = result.Duration
+		}
+		totalTime += result.Duration
+		meanTime += result.Duration
+	}
+
+	meanTime = meanTime / time.Duration(len(results))
+	fmt.Printf("  Min: %s | Max: %s | Total: %s | Mean: %s\n", minTime, maxTime, totalTime, meanTime)
+
 }
 
 var _ = Describe("Auction", func() {
@@ -164,141 +180,173 @@ var _ = Describe("Auction", func() {
 				instances = append(instances, instance.New(util.NewGuid("APP"), 1))
 			}
 
-			representatives := []representative.Rep{}
+			var client *lossyrep.LossyRep
+			repGuids := []string{}
+			repMap := map[string]*representative.Representative{}
+
 			for i := 0; i < numReps; i++ {
-				representatives = append(representatives, lossyrep.New(repResources, false, nil))
+				guid := util.NewGuid("REP")
+				repGuids = append(repGuids, guid)
+				repMap[guid] = representative.New(guid, repResources, nil)
 			}
 
-			results := auctioneer.HoldAuctionsFor(instances, representatives, rules)
+			client = lossyrep.New(repMap, map[string]bool{})
 
-			printReport(results, representatives, rules, false)
+			results, duration := auctioneer.HoldAuctionsFor(client, instances, repGuids, rules)
+
+			printReport(client, results, repGuids, rules, duration, false)
 		})
 	})
 
-	Context("with non-empty representatives (and single-instance apps)", func() {
-		var numApps int
-		var repDistributions []int
+	// Context("with non-empty representatives (and single-instance apps)", func() {
+	// 	var numApps int
+	// 	var repDistributions []int
 
-		BeforeEach(func() {
-			numApps = 100
-			repDistributions = []int{100, 20, 10, -7, 19, 32, -42, 71, 10, 20, 13, 82, 36, 42, 16, 13, 28, 57, 12, -2}
-		})
+	// 	BeforeEach(func() {
+	// 		numApps = 100
+	// 		repDistributions = []int{100, 20, 10, -7, 19, 32, -42, 71, 10, 20, 13, 82, 36, 42, 16, 13, 28, 57, 12, -2}
+	// 	})
 
-		It("should distribute evenly", func() {
-			instances := []instance.Instance{}
-			for i := 0; i < numApps; i++ {
-				instances = append(instances, instance.New(util.NewGuid("APP"), 1))
-			}
+	// 	It("should distribute evenly", func() {
+	// 		instances := []instance.Instance{}
+	// 		for i := 0; i < numApps; i++ {
+	// 			instances = append(instances, instance.New(util.NewGuid("APP"), 1))
+	// 		}
 
-			representatives := []representative.Rep{}
-			for _, repoApps := range repDistributions {
-				numExistingApps := repoApps
-				flaky := false
-				if repoApps < 0 {
-					numExistingApps = -repoApps
-					flaky = true
-				}
-				existingInstances := map[string]instance.Instance{}
-				for i := 0; i < numExistingApps; i++ {
-					inst := instance.New(util.NewGuid("APP"), 1)
-					existingInstances[inst.InstanceGuid] = inst
-				}
-				representatives = append(representatives, lossyrep.New(repResources, flaky, existingInstances))
-			}
+	// 		var client *lossyrep.LossyRep
+	// 		repGuids := []string{}
+	// 		repMap := map[string]*representative.Representative{}
+	// 		flakyMap := map[string]bool
 
-			results := auctioneer.HoldAuctionsFor(instances, representatives, rules)
+	// 		for _, repoApps := range repDistributions {
+	// 			guid := util.NewGuid("REP")
+	// 			numExistingApps := repoApps
+	// 			if repoApps < 0 {
+	// 				numExistingApps = -repoApps
+	// 				flakyMap[guid] = true
+	// 			}
+	// 			//HERE
+	// 			repGuids = append(repGuids, guid)
+	// 			repMap[guid] = representative.New(guid, repResources, nil)
+	// 		}
 
-			printReport(results, representatives, rules, false)
-		})
-	})
+	// 		client = lossyrep.New(repMap, flakyMap)
 
-	Context("when scaling up an app", func() {
-		var newInstances map[string]int
-		var repDistributions []int
+	// 		results, duration := auctioneer.HoldAuctionsFor(client, instances, repGuids, rules)
 
-		BeforeEach(func() {
-			newInstances = map[string]int{
-				"green":  30,
-				"red":    27,
-				"cyan":   10,
-				"yellow": 22,
-				"gray":   8,
-			}
-			repDistributions = []int{100, 20, 10, -7, 19, 32, -42, 71, 10, 20, 13, 82, 36, 42, 16, 13, 28, 57, 12, -2}
-		})
+	// 		printReport(client, results, repGuids, rules, duration, false)
 
-		It("should distribute evenly", func() {
-			instances := []instance.Instance{}
-			for color, num := range newInstances {
-				for i := 0; i < num; i++ {
-					instances = append(instances, instance.New(color, 1))
-				}
-			}
+	// 		//NUKE!
+	// 		representatives := []representative.Rep{}
+	// 		for _, repoApps := range repDistributions {
+	// 			numExistingApps := repoApps
+	// 			flaky := false
+	// 			if repoApps < 0 {
+	// 				numExistingApps = -repoApps
+	// 				flaky = true
+	// 			}
+	// 			//FROME HERE
+	// 			existingInstances := map[string]instance.Instance{}
+	// 			for i := 0; i < numExistingApps; i++ {
+	// 				inst := instance.New(util.NewGuid("APP"), 1)
+	// 				existingInstances[inst.InstanceGuid] = inst
+	// 			}
+	// 			representatives = append(representatives, lossyrep.New(repResources, flaky, existingInstances))
+	// 		}
 
-			representatives := []representative.Rep{}
-			for _, repoApps := range repDistributions {
-				numExistingApps := repoApps
-				flaky := false
-				if repoApps < 0 {
-					numExistingApps = -repoApps
-					flaky = true
-				}
-				existingInstances := map[string]instance.Instance{}
-				for i := 0; i < numExistingApps; i++ {
-					inst := instance.New(util.RandomFrom("green", "red", "yellow", "cyan", "gray"), 1)
-					existingInstances[inst.InstanceGuid] = inst
-				}
-				representatives = append(representatives, lossyrep.New(repResources, flaky, existingInstances))
-			}
+	// 		results := auctioneer.HoldAuctionsFor(instances, representatives, rules)
 
-			results := auctioneer.HoldAuctionsFor(instances, representatives, rules)
+	// 		printReport(results, representatives, rules, false)
+	// 	})
+	// })
 
-			printReport(results, representatives, rules, true)
-		})
-	})
+	// Context("when scaling up an app", func() {
+	// 	var newInstances map[string]int
+	// 	var repDistributions []int
 
-	Context("when starting from empty", func() {
-		var newInstances map[string]int
-		var repDistributions []int
+	// 	BeforeEach(func() {
+	// 		newInstances = map[string]int{
+	// 			"green":  30,
+	// 			"red":    27,
+	// 			"cyan":   10,
+	// 			"yellow": 22,
+	// 			"gray":   8,
+	// 		}
+	// 		repDistributions = []int{100, 20, 10, -7, 19, 32, -42, 71, 10, 20, 13, 82, 36, 42, 16, 13, 28, 57, 12, -2}
+	// 	})
 
-		BeforeEach(func() {
-			newInstances = map[string]int{
-				"green":  100,
-				"red":    75,
-				"cyan":   50,
-				"yellow": 25,
-				"gray":   10,
-			}
-			repDistributions = []int{0, 0, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-		})
+	// 	It("should distribute evenly", func() {
+	// 		instances := []instance.Instance{}
+	// 		for color, num := range newInstances {
+	// 			for i := 0; i < num; i++ {
+	// 				instances = append(instances, instance.New(color, 1))
+	// 			}
+	// 		}
 
-		It("should distribute evenly", func() {
-			instances := []instance.Instance{}
-			for color, num := range newInstances {
-				for i := 0; i < num; i++ {
-					instances = append(instances, instance.New(color, 1))
-				}
-			}
+	// 		representatives := []representative.Rep{}
+	// 		for _, repoApps := range repDistributions {
+	// 			numExistingApps := repoApps
+	// 			flaky := false
+	// 			if repoApps < 0 {
+	// 				numExistingApps = -repoApps
+	// 				flaky = true
+	// 			}
+	// 			existingInstances := map[string]instance.Instance{}
+	// 			for i := 0; i < numExistingApps; i++ {
+	// 				inst := instance.New(util.RandomFrom("green", "red", "yellow", "cyan", "gray"), 1)
+	// 				existingInstances[inst.InstanceGuid] = inst
+	// 			}
+	// 			representatives = append(representatives, lossyrep.New(repResources, flaky, existingInstances))
+	// 		}
 
-			representatives := []representative.Rep{}
-			for _, repoApps := range repDistributions {
-				numExistingApps := repoApps
-				flaky := false
-				if repoApps < 0 {
-					numExistingApps = -repoApps
-					flaky = true
-				}
-				existingInstances := map[string]instance.Instance{}
-				for i := 0; i < numExistingApps; i++ {
-					inst := instance.New(util.RandomFrom("green", "red", "yellow", "cyan", "gray"), 1)
-					existingInstances[inst.InstanceGuid] = inst
-				}
-				representatives = append(representatives, lossyrep.New(repResources, flaky, existingInstances))
-			}
+	// 		results := auctioneer.HoldAuctionsFor(instances, representatives, rules)
 
-			results := auctioneer.HoldAuctionsFor(instances, representatives, rules)
+	// 		printReport(results, representatives, rules, true)
+	// 	})
+	// })
 
-			printReport(results, representatives, rules, true)
-		})
-	})
+	// Context("when starting from empty", func() {
+	// 	var newInstances map[string]int
+	// 	var repDistributions []int
+
+	// 	BeforeEach(func() {
+	// 		newInstances = map[string]int{
+	// 			"green":  100,
+	// 			"red":    75,
+	// 			"cyan":   50,
+	// 			"yellow": 25,
+	// 			"gray":   10,
+	// 		}
+	// 		repDistributions = []int{0, 0, 0, 0, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+	// 	})
+
+	// 	It("should distribute evenly", func() {
+	// 		instances := []instance.Instance{}
+	// 		for color, num := range newInstances {
+	// 			for i := 0; i < num; i++ {
+	// 				instances = append(instances, instance.New(color, 1))
+	// 			}
+	// 		}
+
+	// 		representatives := []representative.Rep{}
+	// 		for _, repoApps := range repDistributions {
+	// 			numExistingApps := repoApps
+	// 			flaky := false
+	// 			if repoApps < 0 {
+	// 				numExistingApps = -repoApps
+	// 				flaky = true
+	// 			}
+	// 			existingInstances := map[string]instance.Instance{}
+	// 			for i := 0; i < numExistingApps; i++ {
+	// 				inst := instance.New(util.RandomFrom("green", "red", "yellow", "cyan", "gray"), 1)
+	// 				existingInstances[inst.InstanceGuid] = inst
+	// 			}
+	// 			representatives = append(representatives, lossyrep.New(repResources, flaky, existingInstances))
+	// 		}
+
+	// 		results := auctioneer.HoldAuctionsFor(instances, representatives, rules)
+
+	// 		printReport(results, representatives, rules, true)
+	// 	})
+	// })
 })

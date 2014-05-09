@@ -4,19 +4,16 @@ import (
 	"errors"
 	"time"
 
-	"github.com/onsi/auction/auctioneer"
 	"github.com/onsi/auction/instance"
 	"github.com/onsi/auction/representative"
+	"github.com/onsi/auction/types"
 	"github.com/onsi/auction/util"
 )
 
 var LatencyMin time.Duration
 var LatencyMax time.Duration
 var Timeout time.Duration
-
 var Flakiness = 1.0
-
-var FlakyError = errors.New("flakeout")
 
 type LossyRep struct {
 	reps      map[string]*representative.Representative
@@ -53,30 +50,38 @@ func (rep *LossyRep) Instances(guid string) []instance.Instance {
 	return rep.reps[guid].Instances()
 }
 
-func (rep *LossyRep) Vote(representatives []string, instance instance.Instance) []auctioneer.VoteResult {
-	c := make(chan auctioneer.VoteResult)
-	for _, guid := range representatives {
-		go func(guid string) {
-			if rep.beSlowAndFlakey(guid) {
-				c <- auctioneer.VoteResult{}
-			}
-			score, err := rep.Reps[guid].Vote(instance)
-			if err != nil {
-				c <- auctioneer.VoteResult{}
-			}
-			c <- auctioneer.VoteResult{
-				Rep:   guid,
-				Score: score,
-			}
-		}(guid)
+func (rep *LossyRep) vote(guid string, instance instance.Instance, c chan types.VoteResult) {
+	result := types.VoteResult{
+		Rep: guid,
+	}
+	defer func() {
+		c <- result
+	}()
+
+	if rep.beSlowAndFlakey(guid) {
+		result.Error = "timeout"
+		return
 	}
 
-	results := []auctioneer.VoteResult{}
-	for _ := range representatives {
-		voteResult := <-c
-		if voteResult.Rep != "" {
-			results = append(results, voteResult)
-		}
+	score, err := rep.reps[guid].Vote(instance)
+	if err != nil {
+		result.Error = err.Error()
+		return
+	}
+
+	result.Score = score
+	return
+}
+
+func (rep *LossyRep) Vote(representatives []string, instance instance.Instance) []types.VoteResult {
+	c := make(chan types.VoteResult)
+	for _, guid := range representatives {
+		go rep.vote(guid, instance, c)
+	}
+
+	results := []types.VoteResult{}
+	for _ = range representatives {
+		results = append(results, <-c)
 	}
 
 	return results
@@ -84,7 +89,7 @@ func (rep *LossyRep) Vote(representatives []string, instance instance.Instance) 
 
 func (rep *LossyRep) ReserveAndRecastVote(guid string, instance instance.Instance) (float64, error) {
 	if rep.beSlowAndFlakey(guid) {
-		return 0, FlakyError
+		return 0, errors.New("timeout")
 	}
 
 	return rep.reps[guid].ReserveAndRecastVote(instance)
