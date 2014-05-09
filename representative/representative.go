@@ -7,17 +7,6 @@ import (
 	"github.com/onsi/auction/instance"
 )
 
-type Rep interface {
-	Guid() string
-	TotalResources() int
-	Instances() []instance.Instance
-
-	Vote(instance instance.Instance) (float64, error)
-	ReserveAndRecastVote(instance instance.Instance) (float64, error)
-	Release(instance instance.Instance)
-	Claim(instance instance.Instance)
-}
-
 var InsufficientResources = errors.New("insufficient resources for instance")
 
 type Representative struct {

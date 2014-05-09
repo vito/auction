@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/onsi/auction/auctioneer"
 	"github.com/onsi/auction/instance"
 	"github.com/onsi/auction/representative"
 	"github.com/onsi/auction/util"
@@ -18,19 +19,19 @@ var Flakiness = 1.0
 var FlakyError = errors.New("flakeout")
 
 type LossyRep struct {
-	representative.Rep
-	Flaky bool
+	reps      map[string]*representative.Representative
+	FlakyReps map[string]bool
 }
 
-func New(totalResources int, flaky bool, instances map[string]instance.Instance) *LossyRep {
+func New(reps map[string]*representative.Representative, flakyReps map[string]bool) *LossyRep {
 	return &LossyRep{
-		Rep:   representative.New(util.NewGuid("REP"), totalResources, instances),
-		Flaky: flaky,
+		reps:      reps,
+		FlakyReps: flakyReps,
 	}
 }
 
-func (rep *LossyRep) beSlowAndFlakey() bool {
-	if rep.Flaky {
+func (rep *LossyRep) beSlowAndFlakey(guid string) bool {
+	if rep.FlakyReps[guid] {
 		if util.Flake(Flakiness) {
 			time.Sleep(Timeout)
 			return true
@@ -44,29 +45,59 @@ func (rep *LossyRep) beSlowAndFlakey() bool {
 	return false
 }
 
-func (rep *LossyRep) Vote(instance instance.Instance) (float64, error) {
-	if rep.beSlowAndFlakey() {
+func (rep *LossyRep) TotalResources(guid string) int {
+	return rep.reps[guid].TotalResources()
+}
+
+func (rep *LossyRep) Instances(guid string) []instance.Instance {
+	return rep.reps[guid].Instances()
+}
+
+func (rep *LossyRep) Vote(representatives []string, instance instance.Instance) []auctioneer.VoteResult {
+	c := make(chan auctioneer.VoteResult)
+	for _, guid := range representatives {
+		go func(guid string) {
+			if rep.beSlowAndFlakey(guid) {
+				c <- auctioneer.VoteResult{}
+			}
+			score, err := rep.Reps[guid].Vote(instance)
+			if err != nil {
+				c <- auctioneer.VoteResult{}
+			}
+			c <- auctioneer.VoteResult{
+				Rep:   guid,
+				Score: score,
+			}
+		}(guid)
+	}
+
+	results := []auctioneer.VoteResult{}
+	for _ := range representatives {
+		voteResult := <-c
+		if voteResult.Rep != "" {
+			results = append(results, voteResult)
+		}
+	}
+
+	return results
+}
+
+func (rep *LossyRep) ReserveAndRecastVote(guid string, instance instance.Instance) (float64, error) {
+	if rep.beSlowAndFlakey(guid) {
 		return 0, FlakyError
 	}
-	return rep.Rep.Vote(instance)
+
+	return rep.reps[guid].ReserveAndRecastVote(instance)
 }
 
-func (rep *LossyRep) ReserveAndRecastVote(instance instance.Instance) (float64, error) {
-	if rep.beSlowAndFlakey() {
-		return 0, FlakyError
-	}
+func (rep *LossyRep) Release(guid string, instance instance.Instance) {
+	rep.beSlowAndFlakey(guid)
 
-	return rep.Rep.ReserveAndRecastVote(instance)
+	rep.reps[guid].Release(instance)
 }
 
-func (rep *LossyRep) Release(instance instance.Instance) {
-	rep.beSlowAndFlakey()
+func (rep *LossyRep) Claim(guid string, instance instance.Instance) {
+	rep.beSlowAndFlakey(guid)
 
-	rep.Rep.Release(instance)
-}
-
-func (rep *LossyRep) Claim(instance instance.Instance) {
-	rep.beSlowAndFlakey()
-
-	rep.Rep.Claim(instance)
+	rep.reps[guid].Claim(instance)
 }
