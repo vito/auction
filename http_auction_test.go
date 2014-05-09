@@ -16,7 +16,7 @@ import (
 	"github.com/onsi/auction/visualization"
 )
 
-var _ = FDescribe("Auctioneering via HTTP", func() {
+var _ = Describe("Auctioneering via HTTP", func() {
 	var repResources int
 	var rules auctioneer.Rules
 

@@ -4,10 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/cloudfoundry/yagnats"
 	"github.com/onsi/auction/instance"
+	"github.com/onsi/auction/types"
 	"github.com/onsi/auction/util"
 )
 
@@ -16,23 +18,17 @@ var RequestFailedError = errors.New("request failed")
 
 type RepClient struct {
 	client  yagnats.NATSClient
-	guid    string
 	timeout time.Duration
 }
 
-func New(client yagnats.NATSClient, guid string, timeout time.Duration) *RepClient {
+func New(client yagnats.NATSClient, timeout time.Duration) *RepClient {
 	return &RepClient{
 		client:  client,
-		guid:    guid,
 		timeout: timeout,
 	}
 }
 
-func (rep *RepClient) Guid() string {
-	return rep.guid
-}
-
-func (rep *RepClient) publishWithTimeout(subject string, req interface{}, resp interface{}) (err error) {
+func (rep *RepClient) publishWithTimeout(guid string, subject string, req interface{}, resp interface{}) (err error) {
 	replyTo := util.RandomGuid()
 	c := make(chan []byte, 1)
 
@@ -51,7 +47,7 @@ func (rep *RepClient) publishWithTimeout(subject string, req interface{}, resp i
 		}
 	}
 
-	rep.client.PublishWithReplyTo(rep.guid+"."+subject, replyTo, payload)
+	rep.client.PublishWithReplyTo(guid+"."+subject, replyTo, payload)
 
 	select {
 	case payload := <-c:
@@ -71,9 +67,9 @@ func (rep *RepClient) publishWithTimeout(subject string, req interface{}, resp i
 	}
 }
 
-func (rep *RepClient) TotalResources() int {
+func (rep *RepClient) TotalResources(guid string) int {
 	var totalResources int
-	err := rep.publishWithTimeout("total_resources", nil, &totalResources)
+	err := rep.publishWithTimeout(guid, "total_resources", nil, &totalResources)
 	if err != nil {
 		panic(err)
 	}
@@ -81,9 +77,9 @@ func (rep *RepClient) TotalResources() int {
 	return totalResources
 }
 
-func (rep *RepClient) Instances() []instance.Instance {
+func (rep *RepClient) Instances(guid string) []instance.Instance {
 	var instances []instance.Instance
-	err := rep.publishWithTimeout("instances", nil, &instances)
+	err := rep.publishWithTimeout(guid, "instances", nil, &instances)
 	if err != nil {
 		panic(err)
 	}
@@ -91,29 +87,75 @@ func (rep *RepClient) Instances() []instance.Instance {
 	return instances
 }
 
-func (rep *RepClient) Vote(instance instance.Instance) (float64, error) {
+func (rep *RepClient) Vote(guids []string, instance instance.Instance) []types.VoteResult {
+	replyTo := util.RandomGuid()
+
+	allReceived := new(sync.WaitGroup)
+	responses := make(chan types.VoteResult, len(guids))
+
+	_, err := rep.client.Subscribe(replyTo, func(msg *yagnats.Message) {
+		defer allReceived.Done()
+		var result types.VoteResult
+		err := json.Unmarshal(msg.Payload, &result)
+		if err != nil {
+			return
+		}
+
+		responses <- result
+	})
+
+	if err != nil {
+		return []types.VoteResult{}
+	}
+
+	payload, _ := json.Marshal(instance)
+
+	for _, guid := range guids {
+		allReceived.Add(1)
+		rep.client.PublishWithReplyTo(guid+".vote", replyTo, payload)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		allReceived.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(rep.timeout):
+	}
+
+	results := []types.VoteResult{}
+
+	for {
+		select {
+		case res := <-responses:
+			results = append(results, res)
+		default:
+			return results
+		}
+	}
+
+	return results
+}
+
+func (rep *RepClient) ReserveAndRecastVote(guid string, instance instance.Instance) (float64, error) {
 	var score float64
-	err := rep.publishWithTimeout("vote", instance, &score)
+	err := rep.publishWithTimeout(guid, "reserve_and_recast_vote", instance, &score)
 
 	return score, err
 }
 
-func (rep *RepClient) ReserveAndRecastVote(instance instance.Instance) (float64, error) {
-	var score float64
-	err := rep.publishWithTimeout("reserve_and_recast_vote", instance, &score)
-
-	return score, err
-}
-
-func (rep *RepClient) Release(instance instance.Instance) {
-	err := rep.publishWithTimeout("release", instance, nil)
+func (rep *RepClient) Release(guid string, instance instance.Instance) {
+	err := rep.publishWithTimeout(guid, "release", instance, nil)
 	if err != nil {
 		log.Println("failed to release:", err)
 	}
 }
 
-func (rep *RepClient) Claim(instance instance.Instance) {
-	err := rep.publishWithTimeout("claim", instance, nil)
+func (rep *RepClient) Claim(guid string, instance instance.Instance) {
+	err := rep.publishWithTimeout(guid, "claim", instance, nil)
 	if err != nil {
 		log.Println("failed to claim:", err)
 	}

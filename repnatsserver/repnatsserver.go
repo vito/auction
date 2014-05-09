@@ -9,6 +9,7 @@ import (
 	"github.com/cloudfoundry/yagnats"
 	"github.com/onsi/auction/instance"
 	"github.com/onsi/auction/representative"
+	"github.com/onsi/auction/types"
 )
 
 var errorResponse = []byte("error")
@@ -17,17 +18,6 @@ var successResponse = []byte("ok")
 var resources = flag.Int("resources", 100, "total available resources")
 var guid = flag.String("guid", "", "guid")
 var natsAddr = flag.String("natsAddr", "127.0.0.1:4222", "nats server address")
-
-type VoteMessage struct {
-	Exclude  string
-	Instance instance.Instance
-}
-
-type VoteResponse struct {
-	Guid  string
-	Score float64
-	Error string
-}
 
 func main() {
 	flag.Parse()
@@ -50,37 +40,6 @@ func main() {
 
 	rep := representative.New(*guid, *resources, nil)
 
-	client.Subscribe(*guid+".auction", func(msg *yagnats.Message) {
-		var voteMsg VoteMessage
-		err := json.Unmarshal(msg.Payload, &voteMsg)
-		if err != nil {
-			panic(err)
-		}
-
-		if voteMsg.Exclude == *guid {
-			return
-		}
-
-		response := VoteResponse{
-			Guid:  *guid,
-			Error: "",
-		}
-
-		defer func() {
-			payload, _ := json.Marshal(response)
-			client.Publish(msg.ReplyTo, payload)
-		}()
-
-		score, err := rep.Vote(voteMsg.Instance)
-		if err != nil {
-			// log.Println(*guid, "failed to vote:", err)
-			response.Error = err.Error()
-			return
-		}
-
-		response.Score = score
-	})
-
 	client.Subscribe(*guid+".guid", func(msg *yagnats.Message) {
 		jguid, _ := json.Marshal(rep.Guid())
 		client.Publish(msg.ReplyTo, jguid)
@@ -99,24 +58,28 @@ func main() {
 	client.Subscribe(*guid+".vote", func(msg *yagnats.Message) {
 		var inst instance.Instance
 
-		responsePayload := errorResponse
-		defer func() {
-			client.Publish(msg.ReplyTo, responsePayload)
-		}()
-
 		err := json.Unmarshal(msg.Payload, &inst)
 		if err != nil {
-			log.Println(*guid, "invalid vote request:", err)
-			return
+			panic(err)
 		}
+
+		response := types.VoteResult{
+			Rep: *guid,
+		}
+
+		defer func() {
+			payload, _ := json.Marshal(response)
+			client.Publish(msg.ReplyTo, payload)
+		}()
 
 		score, err := rep.Vote(inst)
 		if err != nil {
-			log.Println(*guid, "failed to vote:", err)
+			// log.Println(*guid, "failed to vote:", err)
+			response.Error = err.Error()
 			return
 		}
 
-		responsePayload, _ = json.Marshal(score)
+		response.Score = score
 	})
 
 	client.Subscribe(*guid+".reserve_and_recast_vote", func(msg *yagnats.Message) {
