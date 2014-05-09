@@ -23,7 +23,7 @@ var errorResponse = []byte("error")
 func main() {
 	flag.Parse()
 
-	if *natsAddr == "" {
+	if *natsAddrs == "" {
 		panic("need either nats addr")
 	}
 

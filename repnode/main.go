@@ -27,7 +27,7 @@ func main() {
 
 	rep := representative.New(*guid, *resources)
 
-	if *natsAddr != "" {
+	if *natsAddrs != "" {
 		go repnatsserver.Start(strings.Split(*natsAddrs, ","), rep)
 	}
 
