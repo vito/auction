@@ -123,18 +123,12 @@ var _ = Describe("Auction", func() {
 		var numReps int
 		var numDemoInstances int
 		BeforeEach(func() {
-			numReps = 10
+			numReps = 20
 			numDemoInstances = 200
 
-			initialDistributions[0] = generateUniqueInstances(50)
-			initialDistributions[1] = generateUniqueInstances(50)
-			initialDistributions[2] = generateUniqueInstances(50)
-			initialDistributions[3] = generateUniqueInstances(50)
-			initialDistributions[4] = generateUniqueInstances(50)
-			initialDistributions[5] = generateUniqueInstances(50)
-			initialDistributions[6] = generateUniqueInstances(50)
-			initialDistributions[7] = generateUniqueInstances(50)
-			initialDistributions[8] = generateUniqueInstances(50)
+			for i := 0; i < numReps-1; i++ {
+				initialDistributions[i] = generateUniqueInstances(50)
+			}
 		})
 
 		It("should distribute evenly", func() {
