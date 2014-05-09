@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/cloudfoundry/yagnats"
@@ -13,7 +14,7 @@ import (
 	"github.com/onsi/auction/types"
 )
 
-var natsAddr = flag.String("natsAddr", "", "nats server address")
+var natsAddrs = flag.String("natsAddrs", "", "nats server addresses")
 var timeout = flag.Duration("timeout", 500*time.Millisecond, "timeout for entire auction")
 var maxConcurrent = flag.Int("maxConcurrent", 10, "number of concurrent auctions to hold")
 
@@ -28,9 +29,15 @@ func main() {
 
 	client := yagnats.NewClient()
 
-	err := client.Connect(&yagnats.ConnectionInfo{
-		Addr: *natsAddr,
-	})
+	clusterInfo := yagnats.ConnectionCluster{}
+
+	for _, addr := range strings.Split(*natsAddrs, ",") {
+		clusterInfo.Members = append(clusterInfo.Members, &yagnats.ConnectionInfo{
+			Addr: *natsAddr,
+		})
+	}
+
+	err := client.Connect(clusterInfo)
 
 	if err != nil {
 		log.Fatalln("no nats:", err)

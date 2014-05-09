@@ -11,7 +11,7 @@ import (
 var resources = flag.Int("resources", 100, "total available resources")
 var httpAddr = flag.String("httpAddr", "", "host:port")
 var guid = flag.String("guid", "", "guid")
-var natsAddr = flag.String("natsAddr", "", "nats server address")
+var natsAddrs = flag.String("natsAddrs", "", "nats server addresses")
 
 func main() {
 	flag.Parse()
@@ -20,14 +20,14 @@ func main() {
 		panic("need guid")
 	}
 
-	if *natsAddr == "" && *httpAddr == "" {
+	if *natsAddrs == "" && *httpAddr == "" {
 		panic("need either nats or http addr (or both)")
 	}
 
 	rep := representative.New(*guid, *resources)
 
 	if *natsAddr != "" {
-		go repnatsserver.Start(*natsAddr, rep)
+		go repnatsserver.Start(*natsAddrs, rep)
 	}
 
 	if *httpAddr != "" {

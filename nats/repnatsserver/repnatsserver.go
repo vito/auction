@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/cloudfoundry/yagnats"
 	"github.com/onsi/auction/instance"
@@ -17,10 +18,15 @@ var successResponse = []byte("ok")
 func Start(natsAddr string, rep *representative.Representative) {
 	client := yagnats.NewClient()
 
-	err := client.Connect(&yagnats.ConnectionInfo{
-		Addr: natsAddr,
-	})
+	clusterInfo := yagnats.ConnectionCluster{}
 
+	for _, addr := range strings.Split(*natsAddrs, ",") {
+		clusterInfo.Members = append(clusterInfo.Members, &yagnats.ConnectionInfo{
+			Addr: *natsAddr,
+		})
+	}
+
+	err := client.Connect(clusterInfo)
 	if err != nil {
 		log.Fatalln("no nats:", err)
 	}
