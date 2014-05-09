@@ -1,12 +1,8 @@
 package auction_test
 
 import (
-	"time"
-
 	"github.com/onsi/auction/auctioneer"
 	"github.com/onsi/auction/instance"
-	"github.com/onsi/auction/lossyrep"
-	"github.com/onsi/auction/types"
 	"github.com/onsi/auction/util"
 	"github.com/onsi/auction/visualization"
 	. "github.com/onsi/ginkgo"
@@ -16,14 +12,7 @@ import (
 var _ = Ω
 
 var _ = FDescribe("Auction", func() {
-	var rules auctioneer.Rules
-
-	var numReps int
-	var repResources int
 	var initialDistributions map[int][]instance.Instance
-
-	var client types.TestRepPoolClient
-	var guids []string
 
 	var numApps int
 
@@ -64,22 +53,11 @@ var _ = FDescribe("Auction", func() {
 	}
 
 	BeforeEach(func() {
-		lossyrep.LatencyMin = 2 * time.Millisecond
-		lossyrep.LatencyMax = 12 * time.Millisecond
-		lossyrep.Timeout = 50 * time.Millisecond
-		lossyrep.Flakiness = 0.95
-
 		util.ResetGuids()
-		rules = auctioneer.DefaultRules
-		rules.MaxRounds = 100
-
-		numReps = 50
-		repResources = 100
 		initialDistributions = map[int][]instance.Instance{}
 	})
 
 	JustBeforeEach(func() {
-		client, guids = buildClient(numReps, repResources)
 		for index, instances := range initialDistributions {
 			client.SetInstances(guids[index], instances)
 		}
@@ -87,7 +65,7 @@ var _ = FDescribe("Auction", func() {
 
 	Context("with empty representatives and single-instance apps", func() {
 		BeforeEach(func() {
-			numApps = 500
+			numApps = 300
 		})
 
 		It("should distribute evenly", func() {
@@ -102,9 +80,8 @@ var _ = FDescribe("Auction", func() {
 	Context("with non-empty representatives (and single-instance apps)", func() {
 		var numApps int
 		BeforeEach(func() {
-			numApps = 500
-			numReps = 20
-			initialDistributions[0] = generateUniqueInstances(100)
+			numApps = 100
+			initialDistributions[0] = generateUniqueInstances(0)
 			initialDistributions[1] = generateUniqueInstances(42)
 			initialDistributions[3] = generateUniqueInstances(17)
 		})
@@ -123,8 +100,6 @@ var _ = FDescribe("Auction", func() {
 
 		Context("when starting from a (terrible) initial distribution", func() {
 			BeforeEach(func() {
-				numReps = 20
-
 				newInstances = map[string]int{
 					"green":  30,
 					"red":    27,
@@ -147,8 +122,6 @@ var _ = FDescribe("Auction", func() {
 
 		Context("when starting from empty", func() {
 			BeforeEach(func() {
-				numReps = 20
-
 				newInstances = map[string]int{
 					"green":  100,
 					"red":    75,

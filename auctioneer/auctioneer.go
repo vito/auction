@@ -30,7 +30,7 @@ type Rules struct {
 func HoldAuctionsFor(client types.RepPoolClient, instances []instance.Instance, representatives []string, rules Rules) ([]types.AuctionResult, time.Duration) {
 	fmt.Printf("\nStarting Auctions\n\n")
 	bar := pb.StartNew(len(instances))
-	bar.ShowBar = true
+
 	t := time.Now()
 	semaphore := make(chan bool, rules.MaxConcurrent)
 	c := make(chan types.AuctionResult)
@@ -48,7 +48,7 @@ func HoldAuctionsFor(client types.RepPoolClient, instances []instance.Instance, 
 		bar.Increment()
 	}
 
-	bar.FinishPrint("\n")
+	bar.Finish()
 
 	return results, time.Since(t)
 }

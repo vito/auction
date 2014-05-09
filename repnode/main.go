@@ -20,7 +20,7 @@ func main() {
 		panic("need guid")
 	}
 
-	if *natsAddr == "" || *httpAddr == "" {
+	if *natsAddr == "" && *httpAddr == "" {
 		panic("need either nats or http addr (or both)")
 	}
 

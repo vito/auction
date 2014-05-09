@@ -18,9 +18,11 @@ type Representative struct {
 
 func New(guid string, totalResources int) *Representative {
 	return &Representative{
-		lock:           &sync.Mutex{},
-		instances:      map[string]instance.Instance{},
+		guid:           guid,
 		totalResources: totalResources,
+
+		lock:      &sync.Mutex{},
+		instances: map[string]instance.Instance{},
 	}
 }
 

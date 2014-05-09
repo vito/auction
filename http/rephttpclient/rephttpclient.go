@@ -12,13 +12,10 @@ import (
 )
 
 var semaphore chan bool
-var MaxConcurrentConnections = 100
+var MaxConcurrentConnections = 10
 
 func init() {
 	semaphore = make(chan bool, MaxConcurrentConnections)
-	http.DefaultClient.Transport = &http.Transport{
-		ResponseHeaderTimeout: 100 * time.Millisecond,
-	}
 }
 
 type RepHTTPClient struct {
@@ -26,7 +23,12 @@ type RepHTTPClient struct {
 	client    *http.Client
 }
 
-func New(endpoints map[string]string) *RepHTTPClient {
+func New(endpoints map[string]string, timeout time.Duration) *RepHTTPClient {
+	http.DefaultClient.Transport = &http.Transport{
+		ResponseHeaderTimeout: timeout,
+		DisableKeepAlives:     true,
+	}
+
 	return &RepHTTPClient{
 		endpoints: endpoints,
 		client:    http.DefaultClient,

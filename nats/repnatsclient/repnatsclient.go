@@ -88,13 +88,10 @@ func (rep *RepNatsClient) Instances(guid string) []instance.Instance {
 }
 
 func (rep *RepNatsClient) Reset(guid string) {
-	var instances []instance.Instance
 	err := rep.publishWithTimeout(guid, "reset", nil, nil)
 	if err != nil {
 		panic(err)
 	}
-
-	return instances
 }
 
 func (rep *RepNatsClient) SetInstances(guid string, instances []instance.Instance) {
@@ -102,8 +99,6 @@ func (rep *RepNatsClient) SetInstances(guid string, instances []instance.Instanc
 	if err != nil {
 		panic(err)
 	}
-
-	return instances
 }
 
 func (rep *RepNatsClient) Vote(guids []string, instance instance.Instance) []types.VoteResult {
