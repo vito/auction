@@ -50,7 +50,7 @@ func main() {
 
 	rep := representative.New(*guid, *resources, nil)
 
-	client.Subscribe("auction", func(msg *yagnats.Message) {
+	client.Subscribe(*guid+".auction", func(msg *yagnats.Message) {
 		var voteMsg VoteMessage
 		err := json.Unmarshal(msg.Payload, &voteMsg)
 		if err != nil {

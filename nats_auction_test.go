@@ -18,7 +18,7 @@ import (
 	"github.com/onsi/gomega/gexec"
 )
 
-var _ = FDescribe("Auctioneering via NATS", func() {
+var _ = Describe("Auctioneering via NATS", func() {
 	var repResources int
 	var rules auctioneer.Rules
 
@@ -83,7 +83,7 @@ var _ = FDescribe("Auctioneering via NATS", func() {
 		var numApps int
 
 		BeforeEach(func() {
-			numApps = 900
+			numApps = 400
 		})
 
 		It("should distribute evenly", func() {
@@ -103,47 +103,54 @@ var _ = FDescribe("Auctioneering via NATS", func() {
 		})
 	})
 
-	// PContext("when starting from empty", func() {
-	// 	var newInstances map[string]int
-	// 	var repDistributions []int
+	FContext("when starting from empty", func() {
+		var newInstances, initialInstances map[string]int
 
-	// 	BeforeEach(func() {
-	// 		newInstances = map[string]int{
-	// 			"green":  100,
-	// 			"red":    75,
-	// 			"cyan":   50,
-	// 			"yellow": 25,
-	// 			"gray":   10,
-	// 		}
-	// 	})
+		BeforeEach(func() {
 
-	// 	It("should distribute evenly", func() {
-	// 		instances := []instance.Instance{}
-	// 		for color, num := range newInstances {
-	// 			for i := 0; i < num; i++ {
-	// 				instances = append(instances, instance.New(color, 1))
-	// 			}
-	// 		}
+			initialInstances = map[string]int{
+				"green":  700,
+				"red":    400,
+				"cyan":   100,
+				"yellow": 250,
+				"gray":   100,
+			}
 
-	// 		representatives := []representative.Rep{}
-	// 		for _, repoApps := range repDistributions {
-	// 			numExistingApps := repoApps
-	// 			flaky := false
-	// 			if repoApps < 0 {
-	// 				numExistingApps = -repoApps
-	// 				flaky = true
-	// 			}
-	// 			existingInstances := map[string]instance.Instance{}
-	// 			for i := 0; i < numExistingApps; i++ {
-	// 				inst := instance.New(util.RandomFrom("green", "red", "yellow", "cyan", "gray"), 1)
-	// 				existingInstances[inst.InstanceGuid] = inst
-	// 			}
-	// 			representatives = append(representatives, lossyrep.New(repResources, flaky, existingInstances))
-	// 		}
+			newInstances = map[string]int{
+				"green":  1000,
+				"red":    750,
+				"cyan":   500,
+				"yellow": 250,
+				"gray":   100,
+			}
+		})
 
-	// 		results := auctioneer.HoldAuctionsFor(instances, representatives, rules)
+		It("should distribute evenly", func() {
+			representatives := make([]representative.Rep, numServers)
+			for i, guid := range servers {
+				representatives[i] = repnatsclient.New(natsRunner.MessageBus, guid, timeout)
+			}
 
-	// 		printReport(results, representatives, rules, true)
-	// 	})
-	// })
+			instances := []instance.Instance{}
+			for color, num := range initialInstances {
+				for i := 0; i < num; i++ {
+					instances = append(instances, instance.New(color, 1))
+				}
+			}
+
+			results := natsauctioneer.HoldAuctionsFor(natsRunner.MessageBus, instances, representatives[:40], rules)
+			printReport(results, representatives, rules, true)
+
+			instances = []instance.Instance{}
+			for color, num := range newInstances {
+				for i := 0; i < num; i++ {
+					instances = append(instances, instance.New(color, 1))
+				}
+			}
+
+			results = natsauctioneer.HoldAuctionsFor(natsRunner.MessageBus, instances, representatives, rules)
+
+			printReport(results, representatives, rules, true)
+		})
+	})
 })

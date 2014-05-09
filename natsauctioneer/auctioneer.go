@@ -3,6 +3,7 @@ package natsauctioneer
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -16,7 +17,8 @@ import (
 
 var AllBiddersFull = errors.New("all the bidders were full")
 
-var MaxBiddingPool = 1000
+var MaxBiddingPool = 20
+var MaxConcurrent = 20
 
 type voteResponse struct {
 	representative representative.Rep
@@ -25,17 +27,18 @@ type voteResponse struct {
 }
 
 func HoldAuctionsFor(natsClient yagnats.NATSClient, instances []instance.Instance, representatives []representative.Rep, rules auctioneer.Rules) []auctioneer.AuctionResult {
-	semaphore := make(chan bool, 20)
+	t := time.Now()
+	semaphore := make(chan bool, MaxConcurrent)
 	c := make(chan auctioneer.AuctionResult)
 	for _, inst := range instances {
 		go func(inst instance.Instance) {
 			semaphore <- true
 			reps := representatives
 			if len(representatives) > MaxBiddingPool {
-				util.R.Perm(len(representatives))
+				permutation := util.R.Perm(len(representatives))
 				reps = []representative.Rep{}
-				for i := 0; i < MaxBiddingPool; i++ {
-					reps = append(reps, representatives[i])
+				for _, index := range permutation[:MaxBiddingPool] {
+					reps = append(reps, representatives[index])
 				}
 			}
 			c <- Auction(natsClient, 50*time.Millisecond, inst, reps, rules)
@@ -47,6 +50,8 @@ func HoldAuctionsFor(natsClient yagnats.NATSClient, instances []instance.Instanc
 	for _ = range instances {
 		results = append(results, <-c)
 	}
+
+	fmt.Printf("Auction took: %s\n", time.Since(t))
 
 	return results
 }
@@ -120,12 +125,6 @@ func vote(natsClient yagnats.NATSClient, timeout time.Duration, instance instanc
 	allReceived := new(sync.WaitGroup)
 	responses := make(chan voteResponse, len(representatives))
 
-	allReceived.Add(len(representatives))
-
-	if skip != nil {
-		allReceived.Done()
-	}
-
 	_, err := natsClient.Subscribe(replyTo, func(msg *yagnats.Message) {
 		defer allReceived.Done()
 
@@ -166,7 +165,13 @@ func vote(natsClient yagnats.NATSClient, timeout time.Duration, instance instanc
 		return nil, 0, err
 	}
 
-	natsClient.PublishWithReplyTo("auction", replyTo, payload)
+	for _, rep := range representatives {
+		if skip != nil && rep.Guid() == skip.Guid() {
+			continue
+		}
+		allReceived.Add(1)
+		natsClient.PublishWithReplyTo(rep.Guid()+".auction", replyTo, payload)
+	}
 
 	done := make(chan struct{})
 	go func() {
