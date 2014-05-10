@@ -1,4 +1,4 @@
-package auction_test
+package ketchup_test
 
 import (
 	"github.com/onsi/auction/auctioneer"

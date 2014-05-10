@@ -24,7 +24,7 @@ func PrintReport(client types.TestRepPoolClient, results []types.AuctionResult, 
 	auctionedInstances := map[string]bool{}
 
 	///
-	fmt.Println("Rounds")
+	fmt.Println("Rounds Distributions")
 	for _, result := range results {
 		roundsDistribution[result.NumRounds] += 1
 		auctionedInstances[result.Instance.InstanceGuid] = true
@@ -35,41 +35,6 @@ func PrintReport(client types.TestRepPoolClient, results []types.AuctionResult, 
 			fmt.Printf("  %2d: %s\n", i, strings.Repeat("■", roundsDistribution[i]))
 		}
 	}
-
-	///
-
-	minRounds, maxRounds, totalRounds, meanRounds := 100000000, 0, 0, float64(0)
-	for _, result := range results {
-		if result.NumRounds < minRounds {
-			minRounds = result.NumRounds
-		}
-		if result.NumRounds > maxRounds {
-			maxRounds = result.NumRounds
-		}
-		totalRounds += result.NumRounds
-		meanRounds += float64(result.NumRounds)
-	}
-
-	meanRounds = meanRounds / float64(len(results))
-	fmt.Printf("  Min: %d | Max: %d | Total: %d | Mean: %.2f\n", minRounds, maxRounds, totalRounds, meanRounds)
-
-	///
-
-	fmt.Println("Votes")
-	minVotes, maxVotes, totalVotes, meanVotes := 100000000, 0, 0, float64(0)
-	for _, result := range results {
-		if result.NumVotes < minVotes {
-			minVotes = result.NumVotes
-		}
-		if result.NumVotes > maxVotes {
-			maxVotes = result.NumVotes
-		}
-		totalVotes += result.NumVotes
-		meanVotes += float64(result.NumVotes)
-	}
-
-	meanVotes = meanVotes / float64(len(results))
-	fmt.Printf("  Min: %d | Max: %d | Total: %d | Mean: %.2f\n", minVotes, maxVotes, totalVotes, meanVotes)
 
 	///
 
@@ -131,6 +96,7 @@ func PrintReport(client types.TestRepPoolClient, results []types.AuctionResult, 
 
 	///
 
+	fmt.Println("Times")
 	minTime, maxTime, totalTime, meanTime := time.Hour, time.Duration(0), time.Duration(0), time.Duration(0)
 	for _, result := range results {
 		if result.Duration < minTime {
@@ -145,5 +111,41 @@ func PrintReport(client types.TestRepPoolClient, results []types.AuctionResult, 
 
 	meanTime = meanTime / time.Duration(len(results))
 	fmt.Printf("  Min: %s | Max: %s | Total: %s | Mean: %s\n", minTime, maxTime, totalTime, meanTime)
+
+	///
+
+	fmt.Println("Rounds")
+	minRounds, maxRounds, totalRounds, meanRounds := 100000000, 0, 0, float64(0)
+	for _, result := range results {
+		if result.NumRounds < minRounds {
+			minRounds = result.NumRounds
+		}
+		if result.NumRounds > maxRounds {
+			maxRounds = result.NumRounds
+		}
+		totalRounds += result.NumRounds
+		meanRounds += float64(result.NumRounds)
+	}
+
+	meanRounds = meanRounds / float64(len(results))
+	fmt.Printf("  Min: %d | Max: %d | Total: %d | Mean: %.2f\n", minRounds, maxRounds, totalRounds, meanRounds)
+
+	///
+
+	fmt.Println("Votes")
+	minVotes, maxVotes, totalVotes, meanVotes := 100000000, 0, 0, float64(0)
+	for _, result := range results {
+		if result.NumVotes < minVotes {
+			minVotes = result.NumVotes
+		}
+		if result.NumVotes > maxVotes {
+			maxVotes = result.NumVotes
+		}
+		totalVotes += result.NumVotes
+		meanVotes += float64(result.NumVotes)
+	}
+
+	meanVotes = meanVotes / float64(len(results))
+	fmt.Printf("  Min: %d | Max: %d | Total: %d | Mean: %.2f\n", minVotes, maxVotes, totalVotes, meanVotes)
 
 }

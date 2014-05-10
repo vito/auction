@@ -4,15 +4,18 @@ import (
 	crand "crypto/rand"
 	"fmt"
 	"math/rand"
+	"sync"
 	"time"
 )
 
 var R *rand.Rand
 var guidTracker map[string]int
+var lock *sync.Mutex
 
 func init() {
 	R = rand.New(rand.NewSource(time.Now().UnixNano()))
 	ResetGuids()
+	lock = &sync.Mutex{}
 }
 
 func ResetGuids() {
@@ -26,7 +29,9 @@ func NewGuid(prefix string) string {
 
 func RandomGuid() string {
 	b := make([]byte, 8)
+	lock.Lock()
 	_, err := crand.Read(b)
+	lock.Unlock()
 	if err != nil {
 		return ""
 	}

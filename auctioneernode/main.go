@@ -16,7 +16,7 @@ import (
 
 var natsAddrs = flag.String("natsAddrs", "", "nats server addresses")
 var timeout = flag.Duration("timeout", 500*time.Millisecond, "timeout for entire auction")
-var maxConcurrent = flag.Int("maxConcurrent", 10, "number of concurrent auctions to hold")
+var maxConcurrent = flag.Int("maxConcurrent", 100, "number of concurrent auctions to hold")
 
 var errorResponse = []byte("error")
 
