@@ -9,7 +9,7 @@ env:
   - REPO_DIR=$GOPATH/src/github.com/onsi/auction
 
 script: |
-  set +x
+  set -x
 
   ps auxff
 
