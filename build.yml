@@ -9,6 +9,10 @@ env:
   - REPO_DIR=$GOPATH/src/github.com/onsi/auction
 
 script: |
+  set +x
+
+  ps auxff
+
   mkdir -p $(dirname $REPO_DIR)
   mv auction $REPO_DIR
 
